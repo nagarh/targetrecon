@@ -70,7 +70,7 @@ pChEMBL = -log₁₀(affinity_nM × 10⁻⁹) = -log₁₀(affinity_M)
 This makes ChEMBL and BindingDB values directly comparable on the same scale.
 
 ### Configurable limit
-The default cap is **1000 per source** (up to 1000 ChEMBL + up to 1000 BindingDB). Since results are sorted by potency, the default captures all practically relevant compounds for most targets.
+The default cap is **1000 per DB** — 1000 from ChEMBL + 1000 from BindingDB = **up to 2000 total**. Since results are sorted by potency before the cap is applied, the default always returns the most potent compounds for most targets.
 
 | Interface | No-limit syntax |
 |---|---|
@@ -103,7 +103,7 @@ targetrecon CDK2 --no-chembl                      # BindingDB only
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
 | `-o, --output PATH` | `.` | Output directory |
 | `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å |
-| `--max-bioactivities INT\|all` | `1000` | Max records per source; `all` = no limit |
+| `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Number of top ligands for SDF export |
 | `--use-chembl / --no-chembl` | on | Include ChEMBL bioactivity data |
@@ -135,7 +135,7 @@ targetrecon batch -i targets.txt --max-bioactivities all
 | `-o, --output PATH` | `./batch_reports` | Output directory |
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
 | `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å |
-| `--max-bioactivities INT\|all` | `1000` | Max records per source; `all` = no limit |
+| `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Ligands per SDF file |
 | `--use-chembl / --no-chembl` | on | Include ChEMBL bioactivity data |

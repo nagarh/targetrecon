@@ -660,7 +660,7 @@ INDEX_HTML = """<!DOCTYPE html>
       <span>0</span><span class="sb-range-val" id="vMinPc">0</span><span>12</span>
     </div>
 
-    <span class="sb-sublabel">Max bioactivities</span>
+    <span class="sb-sublabel">Max bioactivities <span style="color:var(--muted);font-weight:400">per DB</span></span>
     <input type="range" class="sb-range" id="rMaxBio" min="100" max="5000" step="100" value="1000"
            oninput="updBio('hMaxBio','vMaxBio',this.value)">
     <div class="sb-range-row">
@@ -1104,7 +1104,7 @@ REPORT_HTML = r"""<!DOCTYPE html>
     </div>
 
     <span class="sb-label" style="text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--muted)">
-      Max bioactivities
+      Max bioactivities <span style="font-weight:400">per DB</span>
     </span>
     <input type="range" class="sb-range" id="rMaxBio" min="100" max="5000" step="100" value="{{ max_bio }}"
            oninput="updBio('hMaxBio','vMaxBio',this.value)">

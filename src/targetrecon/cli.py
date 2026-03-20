@@ -106,7 +106,7 @@ def main(ctx: click.Context) -> None:
     type=BioactivitiesType(),
     default=1000,
     show_default=True,
-    help="Max bioactivity records per source (default: 1000). Use 'all' for no limit.",
+    help="Max bioactivity records per DB/source (default: 1000 each from ChEMBL + BindingDB = up to 2000 total). Use 'all' for no limit.",
 )
 @click.option(
     "--min-pchembl",
@@ -305,7 +305,7 @@ def serve(port: int, host: str, debug: bool) -> None:
               default=["html", "json", "sdf"], help="Output formats.")
 @click.option("--max-resolution", type=float, default=4.0, show_default=True)
 @click.option("--max-bioactivities", type=BioactivitiesType(), default=1000, show_default=True,
-              help="Max bioactivity records per source (default: 1000). Use 'all' for no limit.")
+              help="Max bioactivity records per DB/source (default: 1000 each from ChEMBL + BindingDB = up to 2000 total). Use 'all' for no limit.")
 @click.option("--min-pchembl", type=float, default=None)
 @click.option("--top-ligands", type=int, default=20, show_default=True)
 @click.option("--use-chembl/--no-chembl", default=True, show_default=True,
