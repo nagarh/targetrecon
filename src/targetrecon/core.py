@@ -16,8 +16,8 @@ from targetrecon.models import (
 async def recon_async(
     query: str,
     max_pdb_resolution: float = 4.0,
-    max_pdb_structures: int = 10_000,
-    max_bioactivities: int = 10_000,
+    max_pdb_structures: int = 50,
+    max_bioactivities: int = 500,
     min_pchembl: float | None = None,
     use_chembl: bool = True,
     use_bindingdb: bool = True,
