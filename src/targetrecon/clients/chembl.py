@@ -25,7 +25,7 @@ async def resolve_target_chembl_id(uniprot_id: str) -> str | None:
 
 async def fetch_bioactivities_by_target(
     chembl_id: str,
-    limit: int = 500,
+    limit: int = 2000,
     min_pchembl: float | None = None,
 ) -> list[BioactivityRecord]:
     records: list[BioactivityRecord] = []
@@ -33,6 +33,7 @@ async def fetch_bioactivities_by_target(
     params: dict = {
         "target_chembl_id": chembl_id,
         "pchembl_value__isnull": "false",
+        "order_by": "-pchembl_value",  # most potent first
         "limit": str(min(limit, 1000)),
         "offset": "0",
     }
