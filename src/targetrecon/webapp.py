@@ -2848,6 +2848,10 @@ def _start_session_cleanup() -> None:
                 expired = [s for s, d in list(_sessions.items()) if now - d["ts"] > _SESSION_TTL]
                 for s in expired:
                     _sessions.pop(s, None)
+            # Also clean up any script output dirs for expired sessions
+            from targetrecon.agent_chat import cleanup_session_workdir
+            for s in expired:
+                cleanup_session_workdir(s)
     _thr.Thread(target=_loop, daemon=True).start()
 
 
@@ -3058,7 +3062,7 @@ def agent_chat_stream():
     sid = data.get("session_id", "").strip()
 
     def _gen():
-        yield from sse_generator(message, conv_id, context_query, _session_reports(sid), provider, model, api_key)
+        yield from sse_generator(message, conv_id, context_query, _session_reports(sid), provider, model, api_key, sid)
 
     return Response(
         stream_with_context(_gen()),
@@ -3136,6 +3140,22 @@ def agent_cache_status():
         if report and report.uniprot:
             cached.append({"key": key, "gene": report.uniprot.gene_name, "uniprot": report.uniprot.uniprot_id})
     return jsonify({"cached": cached})
+
+
+@app.route("/agent/files/<sid>/<filename>")
+def agent_file(sid: str, filename: str):
+    """Serve a script output file from the user's session working directory."""
+    import re
+    from flask import send_from_directory
+    from targetrecon.agent_chat import get_session_workdir
+    # Basic safety: no path traversal
+    if not re.match(r'^[\w\-. ]+$', filename):
+        return "Invalid filename", 400
+    workdir = get_session_workdir(sid)
+    filepath = workdir / filename
+    if not filepath.exists():
+        return "File not found", 404
+    return send_from_directory(str(workdir), filename)
 
 
 # ── Jinja filter ──────────────────────────────────────────────────────────

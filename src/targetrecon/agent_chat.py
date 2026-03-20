@@ -6,8 +6,14 @@ import dataclasses
 import json
 import os
 import queue
+import shutil
+import subprocess
+import sys
+import tempfile
+import textwrap
 import threading
 import time
+from pathlib import Path
 from typing import Any, AsyncGenerator
 
 import anthropic
@@ -35,6 +41,28 @@ def save_turn(conv_id: str, new_messages: list[dict]) -> None:
 def clear_conversation(conv_id: str) -> None:
     with _store_lock:
         _conversation_store.pop(conv_id, None)
+
+
+# ── Session working directories (for run_python file output) ──────────────────
+_session_workdirs: dict[str, Path] = {}
+_workdirs_lock = threading.Lock()
+
+
+def get_session_workdir(sid: str) -> Path:
+    """Return (creating if needed) a temp directory for this session's script output."""
+    with _workdirs_lock:
+        if sid not in _session_workdirs or not _session_workdirs[sid].exists():
+            d = Path(tempfile.mkdtemp(prefix=f"tr_{sid[:8]}_"))
+            _session_workdirs[sid] = d
+        return _session_workdirs[sid]
+
+
+def cleanup_session_workdir(sid: str) -> None:
+    """Delete the session workdir — called when the session expires."""
+    with _workdirs_lock:
+        d = _session_workdirs.pop(sid, None)
+    if d and d.exists():
+        shutil.rmtree(d, ignore_errors=True)
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -257,6 +285,30 @@ TOOL_DEFS = [
             "required": ["query", "smiles"]
         }
     },
+    {
+        "name": "run_python",
+        "description": (
+            "Write and execute an arbitrary Python script for custom cheminformatics, statistics, "
+            "or data analysis on the cached target data. "
+            "The script runs in a subprocess with a timeout. "
+            "Pre-injected variables: `ligands` (list of dicts with keys: smiles, name, chembl_id, "
+            "pchembl, activity_type, value_nM, num_assays, sources), "
+            "`bioactivities` (list of dicts with keys: smiles, name, source, activity_type, value, pchembl_value), "
+            "`target` (str, gene name). "
+            "Available packages: rdkit, pandas, numpy, scipy, math, json, collections, itertools. "
+            "Print results to stdout — that is what gets returned. "
+            "Use this for any custom analysis not covered by other tools."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
+                "script": {"type": "string", "description": "Complete Python script to execute. Use print() to output results."},
+                "description": {"type": "string", "description": "One-line description of what this script does"},
+            },
+            "required": ["query", "script", "description"]
+        }
+    },
 ]
 
 TOOL_DISPLAY = {
@@ -271,6 +323,7 @@ TOOL_DISPLAY = {
     "analyze_scaffolds": "Decomposing Murcko scaffolds (RDKit)",
     "compute_properties": "Computing drug-likeness properties (RDKit)",
     "similarity_search": "Running similarity search (Morgan/Tanimoto)",
+    "run_python": "Executing Python script",
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -286,6 +339,7 @@ Guidelines:
 - If a user asks about a target not yet searched, proactively run search_target
 - For scaffold questions, always run analyze_scaffolds — never guess from SMILES alone
 - For drug-likeness questions, always run compute_properties — give Ro5 pass/fail counts
+- For any custom analysis not covered by other tools (custom RDKit, statistics, plots as text), use run_python — write a complete script and print results to stdout
 - Be concise but scientifically rigorous; use bullet points for findings
 - Suggest follow-up analyses the user might not have considered
 
@@ -898,6 +952,115 @@ async def _tool_similarity_search(inputs: dict, report_cache: dict) -> dict:
     }
 
 
+_EXEC_TIMEOUT = int(os.environ.get("TARGETRECON_EXEC_TIMEOUT", "60"))
+_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".svg", ".gif"}
+_DATA_EXTS  = {".csv", ".tsv", ".txt", ".json", ".sdf", ".mol"}
+
+
+async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
+    query = inputs["query"].strip().upper()
+    report = report_cache.get(query)
+    if not report:
+        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+
+    script = inputs.get("script", "")
+    description = inputs.get("description", "custom script")
+    sid = inputs.get("__sid__", "")
+    if not script:
+        return {"error": "No script provided."}
+
+    # Per-session working directory so files persist and are user-isolated
+    workdir = get_session_workdir(sid) if sid else Path(tempfile.mkdtemp(prefix="tr_tmp_"))
+    before = set(workdir.iterdir())
+
+    gene = (report.uniprot.gene_name if report.uniprot else None) or query
+
+    ligands_data = [
+        {
+            "smiles": l.smiles, "name": l.name, "chembl_id": l.chembl_id,
+            "pchembl": l.best_pchembl, "activity_type": l.best_activity_type,
+            "value_nM": l.best_activity_value_nM, "num_assays": l.num_assays,
+            "sources": l.sources,
+        }
+        for l in (report.ligand_summary or [])
+    ]
+    bio_data = [
+        {
+            "smiles": b.smiles, "name": b.name, "source": b.source,
+            "activity_type": b.activity_type, "value": b.value,
+            "pchembl_value": b.pchembl_value,
+        }
+        for b in (report.bioactivities or [])
+    ]
+
+    prelude = (
+        "import json, math, collections, itertools\n"
+        "try:\n    import pandas as pd\nexcept ImportError: pass\n"
+        "try:\n    import numpy as np\nexcept ImportError: pass\n"
+        "try:\n    import scipy\nexcept ImportError: pass\n"
+        "try:\n    import matplotlib\n    matplotlib.use('Agg')\n    import matplotlib.pyplot as plt\nexcept ImportError: pass\n"
+        "try:\n    from rdkit import Chem, DataStructs\n"
+        "    from rdkit.Chem import Descriptors, rdMolDescriptors, AllChem\n"
+        "    from rdkit.Chem.Scaffolds import MurckoScaffold\n"
+        "except ImportError: pass\n"
+        f"target = {gene!r}\n"
+        f"ligands = {json.dumps(ligands_data)}\n"
+        f"bioactivities = {json.dumps(bio_data)}\n"
+        "# ── user script ──\n"
+    )
+    full_script = prelude + textwrap.dedent(script)
+
+    try:
+        proc = subprocess.run(
+            [sys.executable, "-c", full_script],
+            capture_output=True, text=True, timeout=_EXEC_TIMEOUT,
+            cwd=str(workdir),
+        )
+        stdout = proc.stdout.strip()
+        stderr = proc.stderr.strip()
+        success = proc.returncode == 0
+
+        # Detect new files created by the script
+        after = set(workdir.iterdir())
+        new_files = sorted(after - before, key=lambda f: f.name)
+
+        result: dict = {"description": description, "success": success}
+        if stdout:
+            result["output"] = stdout[:4000]
+        if stderr:
+            result["stderr"] = stderr[:1000]
+        if not stdout and not stderr and not new_files:
+            result["output"] = "(no output — add print() statements to see results)"
+
+        # Build action links for new files
+        action_links = []
+        image_urls = []
+        for f in new_files:
+            ext = f.suffix.lower()
+            url = f"/agent/files/{sid}/{f.name}" if sid else f"/agent/files/tmp/{f.name}"
+            if ext in _IMAGE_EXTS:
+                action_links.append({"label": f"View {f.name}", "href": url, "external": False, "is_image": True})
+                image_urls.append(url)
+            elif ext in _DATA_EXTS:
+                action_links.append({"label": f"Download {f.name}", "href": url, "external": False})
+
+        # Tell the LLM about images so it can reference them inline
+        if image_urls:
+            result["images"] = image_urls
+            result["image_note"] = (
+                "Images were saved. Reference them in your response using markdown: "
+                + "  ".join(f"![{Path(u).name}]({u})" for u in image_urls)
+            )
+
+        result["_action_links"] = action_links
+        return result
+
+    except subprocess.TimeoutExpired:
+        return {"error": f"Script timed out after {_EXEC_TIMEOUT}s. Simplify or reduce data size."}
+    except Exception as exc:
+        return {"error": f"Execution error: {exc}"}
+
+
 TOOL_REGISTRY = {
     "search_target": _tool_search_target,
     "get_top_ligands": _tool_get_top_ligands,
@@ -910,6 +1073,7 @@ TOOL_REGISTRY = {
     "analyze_scaffolds": _tool_analyze_scaffolds,
     "compute_properties": _tool_compute_properties,
     "similarity_search": _tool_similarity_search,
+    "run_python": _tool_run_python,
 }
 
 
@@ -933,7 +1097,7 @@ def _sse(event_type: str, payload: dict) -> str:
 
 
 # ── Shared tool executor ──────────────────────────────────────────────────────
-async def _exec_tool(tool_name: str, tool_inputs: dict, report_cache: dict, tool_id: str, q: queue.Queue) -> str:
+async def _exec_tool(tool_name: str, tool_inputs: dict, report_cache: dict, tool_id: str, q: queue.Queue, sid: str = "") -> str:
     tool_func = TOOL_REGISTRY.get(tool_name)
     if not tool_func:
         result: dict = {"error": f"Unknown tool: {tool_name}"}
@@ -941,6 +1105,7 @@ async def _exec_tool(tool_name: str, tool_inputs: dict, report_cache: dict, tool
     else:
         try:
             t0 = time.time()
+            tool_inputs["__sid__"] = sid  # inject session ID for tools that need it
             result = await tool_func(tool_inputs, report_cache)
             elapsed = round(time.time() - t0, 1)
         except Exception as exc:
@@ -948,6 +1113,12 @@ async def _exec_tool(tool_name: str, tool_inputs: dict, report_cache: dict, tool
             elapsed = 0.0
 
     action_links = result.pop("_action_links", [])
+    # Append session ID to internal export links (skip /agent/files/ — sid already in path)
+    if sid:
+        for lnk in action_links:
+            if not lnk.get("external") and "href" in lnk and "/agent/files/" not in lnk["href"]:
+                sep = "&" if "?" in lnk["href"] else "?"
+                lnk["href"] = f"{lnk['href']}{sep}sid={sid}"
     q.put(_sse("tool_result", {
         "tool_name": tool_name,
         "tool_id": tool_id,
@@ -973,7 +1144,7 @@ def _build_system(context_query: str | None, report_cache: dict) -> str:
 # ── Anthropic streaming agent ─────────────────────────────────────────────────
 async def _run_anthropic(
     message: str, conv_id: str, context_query: str | None,
-    report_cache: dict, q: queue.Queue, model: str, api_key: str,
+    report_cache: dict, q: queue.Queue, model: str, api_key: str, sid: str = "",
 ) -> None:
     client = anthropic.AsyncAnthropic(api_key=api_key)
     system = _build_system(context_query, report_cache)
@@ -1022,7 +1193,7 @@ async def _run_anthropic(
                                 inputs = json.loads(current_tool_json) if current_tool_json else {}
                             except Exception:
                                 inputs = {}
-                            result_str = await _exec_tool(current_tool_name, inputs, report_cache, current_tool_id, q)
+                            result_str = await _exec_tool(current_tool_name, inputs, report_cache, current_tool_id, q, sid)
                             tool_use_blocks.append({
                                 "type": "tool_use", "id": current_tool_id,
                                 "name": current_tool_name, "input": inputs,
@@ -1060,7 +1231,7 @@ async def _run_anthropic(
 # ── OpenAI / Groq streaming agent ─────────────────────────────────────────────
 async def _run_openai_compat(
     message: str, conv_id: str, context_query: str | None,
-    report_cache: dict, q: queue.Queue, model: str, api_key: str, provider: str,
+    report_cache: dict, q: queue.Queue, model: str, api_key: str, provider: str, sid: str = "",
 ) -> None:
     if provider == "groq":
         import groq as groq_sdk
@@ -1143,7 +1314,7 @@ async def _run_openai_compat(
                     inputs = json.loads(tc["function"]["arguments"]) if tc["function"]["arguments"] else {}
                 except Exception:
                     inputs = {}
-                result_str = await _exec_tool(tool_name, inputs, report_cache, tool_id, q)
+                result_str = await _exec_tool(tool_name, inputs, report_cache, tool_id, q, sid)
                 tool_msg = {"role": "tool", "tool_call_id": tool_id, "content": result_str}
                 history.append(tool_msg)
                 new_messages.append(tool_msg)
@@ -1164,14 +1335,14 @@ async def _run_openai_compat(
 async def _run_agent(
     message: str, conv_id: str, context_query: str | None,
     report_cache: dict, q: queue.Queue,
-    provider: str = "anthropic", model: str = "claude-sonnet-4-6", api_key: str = "",
+    provider: str = "anthropic", model: str = "claude-sonnet-4-6", api_key: str = "", sid: str = "",
 ) -> None:
     if not api_key:
         raise ValueError("No API key provided. Please enter your own API key in the AI panel.")
     if provider == "anthropic":
-        await _run_anthropic(message, conv_id, context_query, report_cache, q, model, api_key)
+        await _run_anthropic(message, conv_id, context_query, report_cache, q, model, api_key, sid)
     else:
-        await _run_openai_compat(message, conv_id, context_query, report_cache, q, model, api_key, provider)
+        await _run_openai_compat(message, conv_id, context_query, report_cache, q, model, api_key, provider, sid)
 
 
 # ── Sync SSE bridge (Flask-compatible) ───────────────────────────────────────
@@ -1183,12 +1354,13 @@ def sse_generator(
     provider: str = "anthropic",
     model: str = "claude-sonnet-4-6",
     api_key: str = "",
+    sid: str = "",
 ):
     """Synchronous generator that bridges async _run_agent → Flask SSE."""
     q: queue.Queue = queue.Queue()
 
     def _thread():
-        asyncio.run(_run_agent(message, conv_id, context_query, report_cache, q, provider, model, api_key))
+        asyncio.run(_run_agent(message, conv_id, context_query, report_cache, q, provider, model, api_key, sid))
 
     threading.Thread(target=_thread, daemon=True).start()
 
