@@ -1214,7 +1214,6 @@ REPORT_HTML = r"""<!DOCTYPE html>
       <button class="tab-btn" onclick="switchTab(this,'interactome')">
         Interactome <span class="badge" style="background:rgba(63,185,80,.12);color:#3fb950;margin-left:4px">{{ report.interactions|length }}</span>
       </button>
-      <button class="tab-btn" onclick="switchTab(this,'ai')">🤖 AI Agent</button>
     </div>
 
     <!-- Overview -->
@@ -1593,26 +1592,6 @@ REPORT_HTML = r"""<!DOCTYPE html>
       {% endif %}
     </div>
 
-    <!-- AI Agent -->
-    <div id="tab-ai" class="tab-panel">
-      <div class="ai-box">
-        <div style="font-size:13px;font-weight:600;color:#e6edf3;margin-bottom:.4rem">Claude AI Analysis</div>
-        <div style="font-size:12.5px;color:#b1bac4;margin-bottom:1.1rem;line-height:1.6">
-          Ask Claude to interpret the target data — druggability, inhibitor scaffolds, structural insights.
-          Requires <code style="background:#21262d;padding:1px 5px;border-radius:3px;font-size:11px">ANTHROPIC_API_KEY</code>.
-        </div>
-        <textarea id="aiQuestion" class="ai-question"
-          placeholder="Leave blank for a full analysis…&#10;Or ask: 'What are the best scaffolds for covalent inhibition?'&#10;Or: 'Which PDB structures are most relevant for docking?'"></textarea>
-        <div style="display:flex;gap:.75rem;align-items:center;margin-top:.75rem">
-          <button class="btn btn-primary" onclick="runAI()" id="aiBtn">Analyse with Claude</button>
-          <span id="aiStatus" style="font-size:12px;color:#768390"></span>
-        </div>
-        <div id="aiResult" style="display:none" class="ai-result">
-          <span class="ai-label" id="aiLabel"></span>
-          <span id="aiText"></span>
-        </div>
-      </div>
-    </div>
   </div><!-- /tabs section -->
 
   <div style="text-align:center;font-size:11.5px;color:#30363d;margin-top:2rem;padding-top:1.5rem;border-top:1px solid #21262d">

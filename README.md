@@ -46,8 +46,8 @@ targetrecon CHEMBL203     # ChEMBL target ID
 | **UniProt** | Function, subcellular location, GO terms, diseases, keywords |
 | **RCSB PDB** | Experimental structures filtered by resolution, ligand extraction |
 | **AlphaFold DB** | Predicted structure with pLDDT confidence coloring |
-| **ChEMBL** | Bioactivity data (IC50, Ki, Kd, EC50) with pChEMBL values |
-| **BindingDB** | Complementary binding affinity measurements |
+| **ChEMBL** | Bioactivity data sorted by pChEMBL descending (most potent first) — IC50, Ki, Kd, EC50 |
+| **BindingDB** | Binding affinity measurements converted to pChEMBL (-log₁₀[Kd/Ki in M]), sorted by potency |
 
 ### 🌐 Interactive Web UI
 ```bash
@@ -95,6 +95,41 @@ targetrecon batch --file targets.txt --format html sdf
 targetrecon batch --file targets.txt --min-pchembl 6.0 --skip-errors
 ```
 Progress table printed after completion showing structures/bioactivities/ligands per target.
+
+---
+
+## Bioactivity Data
+
+### Sorting
+Both ChEMBL and BindingDB results are **sorted by pChEMBL descending** — most potent compounds always come first, regardless of the cap:
+
+- **ChEMBL**: `order_by=-pchembl_value` sent directly to the API, so only the top-N most potent records are fetched (efficient, no wasted API calls).
+- **BindingDB**: all records fetched in a single request, then sorted by pChEMBL descending client-side before applying the cap.
+
+### BindingDB → pChEMBL conversion
+BindingDB reports raw affinity values in nM. TargetRecon converts them to pChEMBL using the same formula as ChEMBL:
+
+```
+pChEMBL = -log₁₀(affinity_nM × 10⁻⁹) = -log₁₀(affinity_M)
+```
+
+This makes ChEMBL and BindingDB values directly comparable on the same scale.
+
+### Configurable limit
+The default cap is **1000 per source** (1000 ChEMBL + up to 1000 BindingDB). You can change this:
+
+```bash
+# CLI
+targetrecon EGFR --max-bioactivities 5000   # fetch up to 5000 per source
+targetrecon EGFR --max-bioactivities 0      # no limit
+
+# Python API
+report = targetrecon.recon("EGFR", max_bioactivities=5000)
+```
+
+In the **web UI**, use the *Max bioactivities* slider in the sidebar (100–5000, or "All").
+
+Since results are sorted by potency, the default of 1000 captures all practically relevant compounds for most targets.
 
 ---
 

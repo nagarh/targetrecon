@@ -36,6 +36,10 @@ async def recon_async(
         console = Console(stderr=True)
         console.print(f"[cyan]Resolving identifiers for '{query}'...[/cyan]")
 
+    # 0 means no limit — use a large sentinel value
+    if max_bioactivities <= 0:
+        max_bioactivities = 100_000
+
     uniprot_id, chembl_id = await resolve_ids(query)
 
     if not uniprot_id:
