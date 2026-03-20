@@ -1167,7 +1167,7 @@ async def _run_agent(
     provider: str = "anthropic", model: str = "claude-sonnet-4-6", api_key: str = "",
 ) -> None:
     if not api_key:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+        raise ValueError("No API key provided. Please enter your own API key in the AI panel.")
     if provider == "anthropic":
         await _run_anthropic(message, conv_id, context_query, report_cache, q, model, api_key)
     else:

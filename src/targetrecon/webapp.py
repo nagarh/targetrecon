@@ -2990,9 +2990,9 @@ def ai_endpoint():
     q       = data.get("query","").strip()
     question= data.get("question","").strip() or None
 
-    api_key = os.environ.get("ANTHROPIC_API_KEY","")
+    api_key = data.get("api_key", "").strip()
     if not api_key:
-        return jsonify({"error": "ANTHROPIC_API_KEY not set in environment."})
+        return jsonify({"error": "No API key provided. Please enter your own API key in the AI panel."})
 
     report = _report_cache.get(q.upper())
     if not report:
@@ -3028,9 +3028,6 @@ def agent_chat_stream():
     if not message:
         return jsonify({"error": "Empty message"}), 400
 
-    # Fall back to server env key if none provided by client
-    if not api_key:
-        api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         err_event = 'data: {"type":"error","message":"No API key provided. Enter your key in the settings panel."}\n\n'
         return Response(err_event, mimetype="text/event-stream")
