@@ -1,0 +1,61 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Ruff / linting
+.ruff_cache/
+
+# Generated reports (don't commit sample outputs)
+*.html
+*.json
+*.sdf
+!src/
+batch_reports/
+
+# Env / secrets
+.env
+.env.*
+*.key
+
+# Logs
+*.log
+/tmp/
+
+# Project-specific
+resume.txt
+CLAUDE_CODE_HANDOFF.md
+app.py
+targetrecon_html_report_preview.html
+test_cli/
+
+# Ketcher bundles (large, ~100MB — download separately, see README)
+src/targetrecon/static/ketcher/
+src/targetrecon/static/ketcher2/
