@@ -17,7 +17,7 @@ async def recon_async(
     query: str,
     max_pdb_resolution: float = 4.0,
     max_pdb_structures: int = 50,
-    max_bioactivities: int = 1000,
+    max_bioactivities: int | None = 1000,
     min_pchembl: float | None = None,
     use_chembl: bool = True,
     use_bindingdb: bool = True,
@@ -36,8 +36,8 @@ async def recon_async(
         console = Console(stderr=True)
         console.print(f"[cyan]Resolving identifiers for '{query}'...[/cyan]")
 
-    # 0 means no limit — use a large sentinel value
-    if max_bioactivities <= 0:
+    # None means no limit — use a large sentinel value
+    if max_bioactivities is None:
         max_bioactivities = 100_000
 
     uniprot_id, chembl_id = await resolve_ids(query)
@@ -141,7 +141,7 @@ async def recon_async(
 def recon(
     query: str,
     max_pdb_resolution: float = 4.0,
-    max_bioactivities: int = 1000,
+    max_bioactivities: int | None = 1000,
     min_pchembl: float | None = None,
 ) -> TargetReport:
     coro = recon_async(

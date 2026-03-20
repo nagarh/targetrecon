@@ -72,6 +72,12 @@ This makes ChEMBL and BindingDB values directly comparable on the same scale.
 ### Configurable limit
 The default cap is **1000 per source** (up to 1000 ChEMBL + up to 1000 BindingDB). Since results are sorted by potency, the default captures all practically relevant compounds for most targets.
 
+| Interface | No-limit syntax |
+|---|---|
+| CLI | `--max-bioactivities all` |
+| Web UI | Move the *Max bioactivities* slider to **All** |
+| Python API | `max_bioactivities=None` |
+
 ---
 
 ## CLI
@@ -86,7 +92,7 @@ pip install targetrecon
 targetrecon EGFR
 targetrecon P00533 -f html -f json -f sdf -o ./reports/
 targetrecon BRAF --min-pchembl 7.0 --max-resolution 2.5
-targetrecon CDK2 --max-bioactivities 5000
+targetrecon CDK2 --max-bioactivities 5000         # up to 5000 per source
 targetrecon CDK2 --max-bioactivities all          # no limit
 targetrecon CDK2 --no-bindingdb                   # ChEMBL only
 targetrecon CDK2 --no-chembl                      # BindingDB only
@@ -165,7 +171,7 @@ targetrecon serve
 - Dark-themed interface with animated molecular backdrop
 - Search by gene name, UniProt accession, or ChEMBL target ID
 - **Molecule sketcher** (Ketcher) — draw a structure to find matching targets
-- Sidebar controls: max PDB resolution, min pChEMBL, ChEMBL/BindingDB toggles, max bioactivities slider (100–5000 or All)
+- Sidebar controls: max PDB resolution, min pChEMBL, ChEMBL/BindingDB toggles, **max bioactivities slider** (100–5000, or drag to **All** for no limit)
 
 ### Report tabs
 
@@ -229,10 +235,13 @@ print(report.best_ligand.best_pchembl)   # e.g. 10.52
 # With options
 report = targetrecon.recon(
     "BRAF",
-    max_bioactivities=5000,   # or 0 for no limit
+    max_bioactivities=5000,   # up to 5000 per source
     min_pchembl=7.0,
     max_pdb_resolution=2.5,
 )
+
+# No limit — fetch all available records
+report = targetrecon.recon("BRAF", max_bioactivities=None)
 
 # Async (for use with asyncio.run or inside async functions)
 import asyncio
@@ -244,6 +253,7 @@ report = asyncio.run(targetrecon.recon_async(
     use_chembl=True,
     use_bindingdb=False,      # ChEMBL only
     max_bioactivities=2000,
+    # max_bioactivities=None  # no limit
 ))
 ```
 

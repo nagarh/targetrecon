@@ -2526,6 +2526,11 @@ function findTargets(btn) {
 </html>
 """
 
+def _max_bio_to_limit(max_bio: int):
+    """Convert UI max_bio integer to recon_async limit (None = unlimited)."""
+    return None if max_bio >= 10000 else max_bio
+
+
 # ── Shared report render helper ───────────────────────────────────────────
 def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bindingdb=True, max_bio=1000):
     u    = report.uniprot
@@ -2626,7 +2631,7 @@ def disambiguate_run():
             from targetrecon.core import recon_async
             try:
                 report = asyncio.run(recon_async(q, max_pdb_resolution=max_res,
-                    max_bioactivities=max_bio,
+                    max_bioactivities=_max_bio_to_limit(max_bio),
                     min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
             except Exception as exc:
                 return f"<html><body><p>Error: {exc}</p></body></html>", 500
@@ -2653,7 +2658,7 @@ def disambiguate_run():
     from targetrecon.core import recon_async
     try:
         report = asyncio.run(recon_async(q, max_pdb_resolution=max_res,
-            max_bioactivities=max_bio,
+            max_bioactivities=_max_bio_to_limit(max_bio),
             min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
     except Exception as exc:
         return f"<html><body><p>Error: {exc}</p></body></html>", 500
@@ -2766,7 +2771,7 @@ def recon_run():
         report = asyncio.run(recon_async(
             q,
             max_pdb_resolution=max_res,
-            max_bioactivities=max_bio,
+            max_bioactivities=_max_bio_to_limit(max_bio),
             min_pchembl=min_pc if min_pc > 0 else None,
             use_chembl=use_chembl,
             use_bindingdb=use_bindingdb,

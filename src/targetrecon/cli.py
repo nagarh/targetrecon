@@ -19,17 +19,17 @@ import click
 
 
 class BioactivitiesType(click.ParamType):
-    """Accepts a positive integer or 'all' (meaning no limit)."""
+    """Accepts a positive integer or 'all' (meaning no limit → None)."""
     name = "INT|all"
 
     def convert(self, value, param, ctx):
-        if isinstance(value, int):
+        if value is None:
             return value
         if str(value).lower() == "all":
-            return 0
+            return None
         try:
             v = int(value)
-            if v < 0:
+            if v <= 0:
                 self.fail(f"'{value}' must be a positive integer or 'all'", param, ctx)
             return v
         except (ValueError, TypeError):
@@ -145,7 +145,7 @@ def run(
     formats: tuple[str, ...],
     output_dir: str,
     max_resolution: float,
-    max_bioactivities: int,
+    max_bioactivities: int | None,
     min_pchembl: float | None,
     top_ligands: int,
     use_chembl: bool,
@@ -321,7 +321,7 @@ def batch(
     output_dir: str,
     formats: tuple[str, ...],
     max_resolution: float,
-    max_bioactivities: int,
+    max_bioactivities: int | None,
     min_pchembl: float | None,
     top_ligands: int,
     use_chembl: bool,
