@@ -2984,33 +2984,6 @@ def export_sdf_route():
 
 
 # ── AI endpoint ────────────────────────────────────────────────────────────
-@app.route("/ai", methods=["POST"])
-def ai_endpoint():
-    data    = request.get_json(force=True)
-    q       = data.get("query","").strip()
-    question= data.get("question","").strip() or None
-
-    api_key = data.get("api_key", "").strip()
-    if not api_key:
-        return jsonify({"error": "No API key provided. Please enter your own API key in the AI panel."})
-
-    report = _report_cache.get(q.upper())
-    if not report:
-        # Re-run a minimal recon to get data
-        from targetrecon.core import recon_async
-        try:
-            report = asyncio.run(recon_async(q, max_pdb_structures=10, max_bioactivities=100, verbose=False))
-        except Exception as exc:
-            return jsonify({"error": str(exc)})
-
-    from targetrecon.agent import analyze_async
-    try:
-        result = asyncio.run(analyze_async(report, question=question, api_key=api_key))
-        return jsonify({"result": result})
-    except Exception as exc:
-        return jsonify({"error": str(exc)})
-
-
 # ── AI Agent streaming routes ─────────────────────────────────────────────
 @app.route("/agent/chat/stream", methods=["POST"])
 def agent_chat_stream():

@@ -60,7 +60,6 @@ dev = [
 
 [project.scripts]
 targetrecon = "targetrecon.cli:main"
-targetrecon-ui = "targetrecon.ui_launcher:main"
 
 [project.urls]
 Homepage = "https://github.com/hyadav/targetrecon"
