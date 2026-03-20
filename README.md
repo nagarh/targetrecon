@@ -54,29 +54,101 @@ targetrecon CHEMBL203     # ChEMBL target ID
 
 ## Bioactivity Data
 
-### Sorting
-Both ChEMBL and BindingDB results are **sorted by pChEMBL descending** — most potent compounds always come first, regardless of the cap:
+### What is pChEMBL?
 
-- **ChEMBL**: `order_by=-pchembl_value` sent directly to the API, so only the top-N most potent records are fetched (efficient, no wasted API calls).
-- **BindingDB**: all records fetched in a single request, then sorted by pChEMBL descending client-side before applying the cap.
-
-### BindingDB → pChEMBL conversion
-BindingDB reports raw affinity values in nM. TargetRecon converts them to pChEMBL using the same formula as ChEMBL:
+pChEMBL is a unified potency scale — the negative log₁₀ of the molar affinity. Higher = more potent.
 
 ```
-pChEMBL = -log₁₀(affinity_nM × 10⁻⁹) = -log₁₀(affinity_M)
+pChEMBL = -log₁₀(affinity_M)
+```
+
+| pChEMBL | Affinity | Interpretation |
+|---|---|---|
+| 9 | 1 nM | Very potent |
+| 7 | 100 nM | Potent |
+| 6 | 1 µM | Moderate |
+| < 5 | > 10 µM | Weak |
+
+ChEMBL natively reports pChEMBL. BindingDB reports raw affinities in nM, which TargetRecon converts using the same formula:
+
+```
+pChEMBL = -log₁₀(affinity_nM × 10⁻⁹)
 ```
 
 This makes ChEMBL and BindingDB values directly comparable on the same scale.
 
-### Configurable limit
-The default cap is **1000 per DB** — 1000 from ChEMBL + 1000 from BindingDB = **up to 2000 total**. Since results are sorted by potency before the cap is applied, the default always returns the most potent compounds for most targets.
+### Full pipeline — what happens when you run a query
+
+```
+1. Resolve query → UniProt ID + ChEMBL target ID
+         │
+         ▼
+2. Fetch in parallel (async):
+   ├── ChEMBL API  → top-N bioactivity records, sorted by pChEMBL desc (server-side)
+   ├── BindingDB API → all records for this UniProt ID (one bulk request)
+   ├── RCSB PDB    → experimental structures
+   ├── AlphaFold   → predicted structure
+   └── STRING DB   → protein interactions
+         │
+         ▼
+3. BindingDB: sort by pChEMBL descending (client-side), apply cap
+         │
+         ▼
+4. Merge ChEMBL + BindingDB records into one list
+         │
+         ▼
+5. Apply min_pchembl filter (if set) across the merged list
+         │
+         ▼
+6. Deduplicate by canonical SMILES → Ligand Summary
+   (same molecule from both sources → one entry, best pChEMBL kept)
+         │
+         ▼
+7. Sort Ligand Summary by best pChEMBL descending
+         │
+         ▼
+8. Output: TargetReport (bioactivities + ligand_summary + structures + ...)
+```
+
+### Fetching strategy per source
+
+**ChEMBL** — server-side sort + pagination:
+- Sends `order_by=-pchembl_value` to the API
+- Only the top-N most potent records are fetched — no wasted API calls
+- Records with no pChEMBL value are excluded at the API level
+
+**BindingDB** — one bulk request + client-side sort:
+- Fetches all records for the UniProt ID in a single HTTP call (no pagination)
+- Sorts by pChEMBL descending locally, then applies the cap
+- Records with no valid affinity value are discarded
+
+### Cap behavior
+
+The default is **1000 per DB**:
+
+| Setting | ChEMBL | BindingDB | Total |
+|---|---|---|---|
+| Default (1000) | top 1000 most potent | top 1000 most potent | up to 2000 |
+| `--max-bioactivities 500` | top 500 most potent | top 500 most potent | up to 1000 |
+| `--max-bioactivities all` | all records | all records | all available |
+
+Because sorting happens **before** the cap, you always get the most potent compounds — never a random subset.
 
 | Interface | No-limit syntax |
 |---|---|
 | CLI | `--max-bioactivities all` |
-| Web UI | Move the *Max bioactivities* slider to **All** |
+| Web UI | Drag the *Max bioactivities per DB* slider to **All** |
 | Python API | `max_bioactivities=None` |
+
+### Ligand deduplication
+
+After merging ChEMBL and BindingDB, all records are grouped by **canonical SMILES** (via RDKit). If the same molecule appears in both databases:
+- It becomes **one entry** in the Ligand Summary
+- The **best pChEMBL** across all assays is kept
+- `sources` lists both databases (e.g. `["ChEMBL", "BindingDB"]`)
+- `num_assays` counts the total assay measurements across both sources
+
+The final Ligand Summary is sorted by best pChEMBL descending — the most potent unique compound is always first.
 
 ---
 
