@@ -203,6 +203,60 @@ TOOL_DEFS = [
             "required": ["query"]
         }
     },
+    {
+        "name": "analyze_scaffolds",
+        "description": (
+            "Decompose ligands of a cached target into Murcko scaffolds using RDKit. "
+            "Groups compounds by scaffold, counts occurrences, and returns the most common scaffolds "
+            "with their representative compounds and best pChEMBL. Use this to identify privileged scaffolds."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
+                "top_n_ligands": {"type": "integer", "description": "How many top ligands to analyse (default 100)"},
+                "top_n_scaffolds": {"type": "integer", "description": "How many top scaffolds to return (default 10)"},
+                "min_pchembl": {"type": "number", "description": "Only include ligands with pChEMBL >= this value"},
+                "generic": {"type": "boolean", "description": "Use generic Murcko scaffold (replaces substituents with H, default false)"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "compute_properties",
+        "description": (
+            "Compute drug-likeness properties for the top ligands of a cached target using RDKit: "
+            "MW, LogP, HBD, HBA, TPSA, rotatable bonds, aromatic rings. "
+            "Flags Lipinski Ro5 violations and highlights lead-like vs drug-like compounds."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
+                "top_n": {"type": "integer", "description": "Number of top ligands to analyse (default 20)"},
+                "min_pchembl": {"type": "number", "description": "Only include ligands with pChEMBL >= this value"}
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "similarity_search",
+        "description": (
+            "Find compounds in a cached target's ligand list that are similar to a query SMILES. "
+            "Uses Morgan fingerprints (radius 2, 2048 bits) and Tanimoto similarity. "
+            "Useful for finding analogues of a known compound within the dataset."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
+                "smiles": {"type": "string", "description": "Query SMILES to search for similar compounds"},
+                "top_n": {"type": "integer", "description": "Number of similar compounds to return (default 10)"},
+                "min_similarity": {"type": "number", "description": "Minimum Tanimoto similarity threshold (default 0.4)"}
+            },
+            "required": ["query", "smiles"]
+        }
+    },
 ]
 
 TOOL_DISPLAY = {
@@ -214,12 +268,15 @@ TOOL_DISPLAY = {
     "get_protein_interactions": "Querying STRING-DB interactions",
     "search_compound": "Searching ChEMBL compound database",
     "filter_bioactivities": "Filtering bioactivity records",
+    "analyze_scaffolds": "Decomposing Murcko scaffolds (RDKit)",
+    "compute_properties": "Computing drug-likeness properties (RDKit)",
+    "similarity_search": "Running similarity search (Morgan/Tanimoto)",
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a specialized AI assistant embedded in TargetRecon, a drug-target intelligence platform used by medicinal chemists and drug discovery scientists.
 
-You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, BindingDB, and STRING-DB. Always use tools to fetch live data rather than relying solely on training knowledge.
+You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, BindingDB, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). Always use tools to fetch live data rather than relying solely on training knowledge.
 
 Guidelines:
 - Use **bold** for gene names, `code` for IDs (UniProt, PDB, ChEMBL), and tables for comparisons
@@ -227,6 +284,8 @@ Guidelines:
 - pChEMBL ≥ 7 = submicromolar (< 100 nM), pChEMBL ≥ 9 = subnanomolar — mention this context
 - When comparing targets, highlight selectivity, structural coverage, and existing drugs
 - If a user asks about a target not yet searched, proactively run search_target
+- For scaffold questions, always run analyze_scaffolds — never guess from SMILES alone
+- For drug-likeness questions, always run compute_properties — give Ro5 pass/fail counts
 - Be concise but scientifically rigorous; use bullet points for findings
 - Suggest follow-up analyses the user might not have considered
 
@@ -666,6 +725,179 @@ async def _tool_filter_bioactivities(inputs: dict, report_cache: dict) -> dict:
     }
 
 
+async def _tool_analyze_scaffolds(inputs: dict, report_cache: dict) -> dict:
+    query = inputs["query"].strip().upper()
+    report = report_cache.get(query)
+    if not report:
+        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+
+    try:
+        from rdkit import Chem
+        from rdkit.Chem.Scaffolds import MurckoScaffold
+    except ImportError:
+        return {"error": "RDKit not available."}
+
+    top_n_ligands  = int(inputs.get("top_n_ligands", 100))
+    top_n_scaffolds = int(inputs.get("top_n_scaffolds", 10))
+    min_pc = inputs.get("min_pchembl")
+    generic = bool(inputs.get("generic", False))
+
+    ligands = [l for l in report.ligand_summary if l.smiles]
+    if min_pc:
+        ligands = [l for l in ligands if l.best_pchembl and l.best_pchembl >= min_pc]
+    ligands = ligands[:top_n_ligands]
+
+    from collections import defaultdict
+    scaffold_groups: dict = defaultdict(list)
+    skipped = 0
+    for lig in ligands:
+        mol = Chem.MolFromSmiles(lig.smiles)
+        if mol is None:
+            skipped += 1
+            continue
+        try:
+            if generic:
+                scaf = MurckoScaffold.MakeScaffoldGeneric(MurckoScaffold.GetScaffoldForMol(mol))
+            else:
+                scaf = MurckoScaffold.GetScaffoldForMol(mol)
+            scaf_smi = Chem.MolToSmiles(scaf)
+        except Exception:
+            skipped += 1
+            continue
+        scaffold_groups[scaf_smi].append(lig)
+
+    sorted_scaffolds = sorted(scaffold_groups.items(), key=lambda x: len(x[1]), reverse=True)
+
+    results = []
+    for scaf_smi, members in sorted_scaffolds[:top_n_scaffolds]:
+        best = max(members, key=lambda l: l.best_pchembl or 0)
+        pcs = [l.best_pchembl for l in members if l.best_pchembl]
+        results.append({
+            "scaffold_smiles": scaf_smi,
+            "count": len(members),
+            "best_pchembl": round(max(pcs), 2) if pcs else None,
+            "mean_pchembl": round(sum(pcs) / len(pcs), 2) if pcs else None,
+            "best_compound": best.name or best.chembl_id or "—",
+            "best_compound_pchembl": best.best_pchembl,
+            "sources": list({s for m in members for s in m.sources}),
+        })
+
+    return {
+        "target": inputs["query"],
+        "ligands_analysed": len(ligands),
+        "unique_scaffolds": len(scaffold_groups),
+        "skipped_invalid_smiles": skipped,
+        "generic_mode": generic,
+        "top_scaffolds": results,
+    }
+
+
+async def _tool_compute_properties(inputs: dict, report_cache: dict) -> dict:
+    query = inputs["query"].strip().upper()
+    report = report_cache.get(query)
+    if not report:
+        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+
+    try:
+        from rdkit import Chem
+        from rdkit.Chem import Descriptors, rdMolDescriptors
+    except ImportError:
+        return {"error": "RDKit not available."}
+
+    top_n = int(inputs.get("top_n", 20))
+    min_pc = inputs.get("min_pchembl")
+
+    ligands = [l for l in report.ligand_summary if l.smiles]
+    if min_pc:
+        ligands = [l for l in ligands if l.best_pchembl and l.best_pchembl >= min_pc]
+    ligands = ligands[:top_n]
+
+    rows = []
+    ro5_pass = 0
+    for lig in ligands:
+        mol = Chem.MolFromSmiles(lig.smiles)
+        if mol is None:
+            continue
+        mw   = round(Descriptors.MolWt(mol), 1)
+        logp = round(Descriptors.MolLogP(mol), 2)
+        hbd  = rdMolDescriptors.CalcNumHBD(mol)
+        hba  = rdMolDescriptors.CalcNumHBA(mol)
+        tpsa = round(Descriptors.TPSA(mol), 1)
+        rot  = rdMolDescriptors.CalcNumRotatableBonds(mol)
+        arom = rdMolDescriptors.CalcNumAromaticRings(mol)
+        violations = sum([mw > 500, logp > 5, hbd > 5, hba > 10])
+        if violations == 0:
+            ro5_pass += 1
+        rows.append({
+            "name": lig.name or lig.chembl_id or "—",
+            "pchembl": lig.best_pchembl,
+            "MW": mw, "LogP": logp, "HBD": hbd, "HBA": hba,
+            "TPSA": tpsa, "RotBonds": rot, "AromaticRings": arom,
+            "Ro5_violations": violations,
+        })
+
+    return {
+        "target": inputs["query"],
+        "compounds_analysed": len(rows),
+        "ro5_pass": ro5_pass,
+        "ro5_fail": len(rows) - ro5_pass,
+        "compounds": rows,
+    }
+
+
+async def _tool_similarity_search(inputs: dict, report_cache: dict) -> dict:
+    query = inputs["query"].strip().upper()
+    report = report_cache.get(query)
+    if not report:
+        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+
+    try:
+        from rdkit import Chem, DataStructs
+        from rdkit.Chem import rdFingerprintGenerator
+    except ImportError:
+        return {"error": "RDKit not available."}
+
+    smiles = inputs["smiles"]
+    top_n = int(inputs.get("top_n", 10))
+    min_sim = float(inputs.get("min_similarity", 0.4))
+
+    mol_q = Chem.MolFromSmiles(smiles)
+    if mol_q is None:
+        return {"error": f"Invalid query SMILES: {smiles}"}
+
+    gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
+    fp_q = gen.GetFingerprint(mol_q)
+
+    hits = []
+    for lig in report.ligand_summary:
+        if not lig.smiles:
+            continue
+        mol = Chem.MolFromSmiles(lig.smiles)
+        if mol is None:
+            continue
+        fp = gen.GetFingerprint(mol)
+        sim = DataStructs.TanimotoSimilarity(fp_q, fp)
+        if sim >= min_sim:
+            hits.append((sim, lig))
+
+    hits.sort(key=lambda x: x[0], reverse=True)
+    return {
+        "target": inputs["query"],
+        "query_smiles": smiles,
+        "hits_found": len(hits),
+        "results": [
+            {
+                "similarity": round(sim, 3),
+                "name": lig.name or lig.chembl_id or "—",
+                "smiles": lig.smiles,
+                "pchembl": lig.best_pchembl,
+                "sources": lig.sources,
+            }
+            for sim, lig in hits[:top_n]
+        ],
+    }
+
+
 TOOL_REGISTRY = {
     "search_target": _tool_search_target,
     "get_top_ligands": _tool_get_top_ligands,
@@ -675,6 +907,9 @@ TOOL_REGISTRY = {
     "get_protein_interactions": _tool_get_protein_interactions,
     "search_compound": _tool_search_compound,
     "filter_bioactivities": _tool_filter_bioactivities,
+    "analyze_scaffolds": _tool_analyze_scaffolds,
+    "compute_properties": _tool_compute_properties,
+    "similarity_search": _tool_similarity_search,
 }
 
 
