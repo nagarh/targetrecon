@@ -17,6 +17,24 @@ from pathlib import Path
 
 import click
 
+
+class BioactivitiesType(click.ParamType):
+    """Accepts a positive integer or 'all' (meaning no limit)."""
+    name = "INT|all"
+
+    def convert(self, value, param, ctx):
+        if isinstance(value, int):
+            return value
+        if str(value).lower() == "all":
+            return 0
+        try:
+            v = int(value)
+            if v < 0:
+                self.fail(f"'{value}' must be a positive integer or 'all'", param, ctx)
+            return v
+        except (ValueError, TypeError):
+            self.fail(f"'{value}' is not a valid integer or 'all'", param, ctx)
+
 from targetrecon import __version__
 
 
@@ -85,10 +103,10 @@ def main(ctx: click.Context) -> None:
 )
 @click.option(
     "--max-bioactivities",
-    type=int,
+    type=BioactivitiesType(),
     default=1000,
     show_default=True,
-    help="Max bioactivity records (0 = no limit).",
+    help="Max bioactivity records per source (default: 1000). Use 'all' for no limit.",
 )
 @click.option(
     "--min-pchembl",
@@ -102,6 +120,18 @@ def main(ctx: click.Context) -> None:
     default=20,
     show_default=True,
     help="Number of top ligands for SDF export.",
+)
+@click.option(
+    "--use-chembl/--no-chembl",
+    default=True,
+    show_default=True,
+    help="Include ChEMBL bioactivity data.",
+)
+@click.option(
+    "--use-bindingdb/--no-bindingdb",
+    default=True,
+    show_default=True,
+    help="Include BindingDB bioactivity data.",
 )
 @click.option(
     "-q",
@@ -118,6 +148,8 @@ def run(
     max_bioactivities: int,
     min_pchembl: float | None,
     top_ligands: int,
+    use_chembl: bool,
+    use_bindingdb: bool,
     quiet: bool,
 ) -> None:
     """Run target reconnaissance.
@@ -130,6 +162,8 @@ def run(
       targetrecon EGFR
       targetrecon P00533 --format html json sdf
       targetrecon BRAF --min-pchembl 7.0 --max-resolution 2.5
+      targetrecon CDK2 --no-bindingdb          # ChEMBL only
+      targetrecon CDK2 --no-chembl             # BindingDB only
     """
     from rich.console import Console
     from rich.panel import Panel
@@ -154,8 +188,10 @@ def run(
             recon_async(
                 query,
                 max_pdb_resolution=max_resolution,
-                max_bioactivities=max_bioactivities if max_bioactivities > 0 else 100_000,
+                max_bioactivities=max_bioactivities,
                 min_pchembl=min_pchembl,
+                use_chembl=use_chembl,
+                use_bindingdb=use_bindingdb,
                 verbose=not quiet,
             )
         )
@@ -268,10 +304,14 @@ def serve(port: int, host: str, debug: bool) -> None:
               type=click.Choice(["json", "html", "sdf"], case_sensitive=False),
               default=["html", "json", "sdf"], help="Output formats.")
 @click.option("--max-resolution", type=float, default=4.0, show_default=True)
-@click.option("--max-bioactivities", type=int, default=1000, show_default=True,
-              help="Max bioactivity records (0 = no limit).")
+@click.option("--max-bioactivities", type=BioactivitiesType(), default=1000, show_default=True,
+              help="Max bioactivity records per source (default: 1000). Use 'all' for no limit.")
 @click.option("--min-pchembl", type=float, default=None)
 @click.option("--top-ligands", type=int, default=20, show_default=True)
+@click.option("--use-chembl/--no-chembl", default=True, show_default=True,
+              help="Include ChEMBL bioactivity data.")
+@click.option("--use-bindingdb/--no-bindingdb", default=True, show_default=True,
+              help="Include BindingDB bioactivity data.")
 @click.option("--skip-errors", is_flag=True, default=False,
               help="Continue batch if a single target fails.")
 @click.option("-q", "--quiet", is_flag=True, default=False)
@@ -284,6 +324,8 @@ def batch(
     max_bioactivities: int,
     min_pchembl: float | None,
     top_ligands: int,
+    use_chembl: bool,
+    use_bindingdb: bool,
     skip_errors: bool,
     quiet: bool,
 ) -> None:
@@ -295,8 +337,9 @@ def batch(
     \b
     Examples:
       targetrecon batch EGFR BRAF CDK2
-      targetrecon batch --file targets.txt
-      targetrecon batch --file targets.txt --format html sdf --min-pchembl 6.0
+      targetrecon batch -i targets.txt
+      targetrecon batch -i targets.txt -f html -f sdf --min-pchembl 6.0
+      targetrecon batch EGFR BRAF --no-bindingdb --skip-errors
     """
     from rich.console import Console
     from rich.table import Table
@@ -333,8 +376,11 @@ def batch(
         try:
             report = asyncio.run(recon_async(
                 q, max_pdb_resolution=max_resolution,
-                max_bioactivities=max_bioactivities if max_bioactivities > 0 else 100_000,
-                min_pchembl=min_pchembl, verbose=False,
+                max_bioactivities=max_bioactivities,
+                min_pchembl=min_pchembl,
+                use_chembl=use_chembl,
+                use_bindingdb=use_bindingdb,
+                verbose=False,
             ))
             if report.uniprot is None:
                 raise ValueError(f"Could not resolve '{q}' to a protein target")
