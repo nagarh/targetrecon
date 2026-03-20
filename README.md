@@ -96,19 +96,6 @@ targetrecon batch --file targets.txt --min-pchembl 6.0 --skip-errors
 ```
 Progress table printed after completion showing structures/bioactivities/ligands per target.
 
-### 📤 Ligand Export with Filters
-```bash
-# Export top 50 potent ligands as SDF
-targetrecon export EGFR --format sdf --min-pchembl 7.0 --top 50
-
-# Multiple targets
-targetrecon export EGFR BRAF CDK2 --format csv --min-pchembl 6.0
-
-# From file, filter by activity type and max concentration
-targetrecon export --file targets.txt --activity-type IC50 --max-nm 100
-```
-Exports SDF or CSV with SMILES, name, ChEMBL ID, activity values, pChEMBL, and source databases.
-
 ---
 
 ## Comparison
@@ -180,21 +167,6 @@ Options:
   --max-resolution FLOAT         Max PDB resolution in Å (default: 4.0)
   --min-pchembl FLOAT            Minimum pChEMBL filter
   --skip-errors                  Continue if a single target fails
-```
-
-### `targetrecon export`
-```
-targetrecon export EGFR -f sdf --min-pchembl 7.0 --top 50
-targetrecon export EGFR BRAF CDK2 -f csv
-targetrecon export -i targets.txt --max-nm 100 --activity-type IC50
-
-Options:
-  -i, --input PATH               Text file, one target per line
-  -f, --format [sdf|csv]         Export format (default: sdf)
-  --min-pchembl FLOAT            Min pChEMBL filter
-  --max-nm FLOAT                 Max activity value in nM
-  --activity-type TEXT           Filter by type: IC50, Ki, Kd, EC50
-  --top INT                      Max ligands per target (default: 50)
 ```
 
 ---
