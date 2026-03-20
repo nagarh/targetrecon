@@ -81,7 +81,7 @@ async def recon_async(
 
         if use_bindingdb:
             bindingdb_task: asyncio.Task | None = tg.create_task(
-                fetch_bioactivities_by_uniprot(canonical_id, limit=min(max_bioactivities, 200))
+                fetch_bioactivities_by_uniprot(canonical_id, limit=max_bioactivities)
             )
         else:
             bindingdb_task = None

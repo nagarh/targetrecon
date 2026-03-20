@@ -43,7 +43,7 @@ async def fetch_bioactivities_by_uniprot(
         affinities = [affinities]
 
     records: list[BioactivityRecord] = []
-    for aff in affinities[:limit]:
+    for aff in affinities:
         # SMILES field is "smile" (singular) in BindingDB REST responses
         smiles = (
             aff.get("smile") or aff.get("smiles") or aff.get("SMILES") or ""
@@ -65,7 +65,9 @@ async def fetch_bioactivities_by_uniprot(
             )
         )
 
-    return records
+    # Sort by pChEMBL descending so most potent come first, then apply limit
+    records.sort(key=lambda r: r.pchembl_value or 0.0, reverse=True)
+    return records[:limit]
 
 
 def _parse_float(s: object) -> float | None:
