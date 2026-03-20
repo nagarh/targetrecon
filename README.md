@@ -333,31 +333,36 @@ report = asyncio.run(targetrecon.recon_async(
 
 ```python
 # UniProt info
-report.uniprot.protein_name
-report.uniprot.gene_name
-report.uniprot.organism
-report.uniprot.function
-report.uniprot.subcellular_location
-report.uniprot.diseases          # list[str]
-report.uniprot.go_terms          # list[str]
+report.uniprot.protein_name           # e.g. "Epidermal growth factor receptor"
+report.uniprot.gene_name              # e.g. "EGFR"
+report.uniprot.organism               # e.g. "Homo sapiens"
+report.uniprot.function_description   # functional annotation text
+report.uniprot.subcellular_locations  # list[str]
+report.uniprot.disease_associations   # list[str]
+report.uniprot.keywords               # list[str]
+report.uniprot.go_terms               # list[GoTerm] — each has .go_id, .term, .category
+report.uniprot.sequence_length        # int
 
 # PDB structures
 for pdb in report.pdb_structures[:5]:
-    print(pdb.pdb_id, pdb.resolution, pdb.method, pdb.ligand_ids)
+    print(pdb.pdb_id, pdb.resolution, pdb.method)
+    for lig in pdb.ligands:           # list[PDBLigand] — each has .ligand_id, .smiles, .name
+        print(lig.ligand_id, lig.name)
 
 # AlphaFold
-report.alphafold.pdb_url         # URL to AlphaFold structure
-report.alphafold.confidence_url  # pLDDT scores
+report.alphafold.pdb_url        # URL to AlphaFold PDB structure
+report.alphafold.model_url      # URL to AlphaFold CIF model
 
 # Bioactivity records (sorted by pChEMBL descending)
 for b in report.bioactivities[:10]:
     print(b.source, b.activity_type, b.value, b.pchembl_value, b.smiles)
 
-# Ligand summary (deduplicated, sorted by best pChEMBL)
+# Ligand summary (deduplicated by canonical SMILES, sorted by best pChEMBL)
 for lig in report.ligand_summary[:10]:
     print(lig.name, lig.chembl_id, lig.best_pchembl, lig.best_activity_type, lig.num_assays)
+    print(lig.sources)                # e.g. ["ChEMBL", "BindingDB"]
 
-report.best_ligand               # most potent ligand overall
+report.best_ligand               # most potent unique ligand overall
 ```
 
 ### Export
