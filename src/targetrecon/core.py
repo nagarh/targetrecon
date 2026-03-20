@@ -17,7 +17,7 @@ async def recon_async(
     query: str,
     max_pdb_resolution: float = 4.0,
     max_pdb_structures: int = 50,
-    max_bioactivities: int = 2000,
+    max_bioactivities: int = 1000,
     min_pchembl: float | None = None,
     use_chembl: bool = True,
     use_bindingdb: bool = True,
@@ -137,11 +137,13 @@ async def recon_async(
 def recon(
     query: str,
     max_pdb_resolution: float = 4.0,
+    max_bioactivities: int = 1000,
     min_pchembl: float | None = None,
 ) -> TargetReport:
     coro = recon_async(
         query,
         max_pdb_resolution=max_pdb_resolution,
+        max_bioactivities=max_bioactivities,
         min_pchembl=min_pchembl,
     )
     try:

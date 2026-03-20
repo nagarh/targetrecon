@@ -629,6 +629,7 @@ INDEX_HTML = """<!DOCTYPE html>
              autofocus autocomplete="off" spellcheck="false">
       <input type="hidden" name="max_res" id="hMaxRes" value="4.0">
       <input type="hidden" name="min_pc"  id="hMinPc"  value="0">
+      <input type="hidden" name="max_bio" id="hMaxBio" value="1000">
       <input type="hidden" name="use_chembl" id="hUseChembl" value="1">
       <input type="hidden" name="use_bindingdb" id="hUseBdb" value="1">
       <button type="submit" class="sb-btn sb-btn-primary" id="searchBtn" onclick="showSearchSpinner(this)">Search</button>
@@ -657,6 +658,13 @@ INDEX_HTML = """<!DOCTYPE html>
            oninput="upd('hMinPc','vMinPc',this.value)">
     <div class="sb-range-row">
       <span>0</span><span class="sb-range-val" id="vMinPc">0</span><span>12</span>
+    </div>
+
+    <span class="sb-sublabel">Max bioactivities</span>
+    <input type="range" class="sb-range" id="rMaxBio" min="100" max="5000" step="100" value="1000"
+           oninput="updBio('hMaxBio','vMaxBio',this.value)">
+    <div class="sb-range-row">
+      <span>100</span><span class="sb-range-val" id="vMaxBio">1000</span><span>All</span>
     </div>
   </div>
 
@@ -692,6 +700,12 @@ function upd(hiddenId, displayId, val) {
   var el = document.getElementById(displayId);
   if (el) el.textContent = hiddenId.includes('Res') ? val + ' Å' : val;
 }
+function updBio(hiddenId, displayId, val) {
+  var v = parseInt(val);
+  document.getElementById(hiddenId).value = v >= 5000 ? 10000 : v;
+  var el = document.getElementById(displayId);
+  if (el) el.textContent = v >= 5000 ? 'All' : val;
+}
 
 function _showSpinner() {
   var btn = document.querySelector('#sbForm button[type=submit]');
@@ -705,6 +719,7 @@ function _getParams(q) {
     q: q,
     max_res: document.getElementById('hMaxRes').value,
     min_pc:  document.getElementById('hMinPc').value,
+    max_bio: document.getElementById('hMaxBio').value,
     use_chembl:    document.getElementById('hUseChembl').value,
     use_bindingdb: document.getElementById('hUseBdb').value,
   });
@@ -835,7 +850,7 @@ LOADING_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0;url=/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}">
+<meta http-equiv="refresh" content="0;url=/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}">
 <title>Searching {{ q }} — TargetRecon</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -945,12 +960,12 @@ DISAMBIG_HTML = """<!DOCTYPE html>
       <td style="text-align:right">
         {% if t.gene_name or t.uniprot_id %}
         <button class="btn btn-primary" style="font-size:12px;padding:.3rem .8rem"
-          onclick="analyseTarget('{{ t.gene_name or t.uniprot_id }}','{{ max_res }}','{{ min_pc }}',this)">
+          onclick="analyseTarget('{{ t.gene_name or t.uniprot_id }}','{{ max_res }}','{{ min_pc }}','{{ max_bio }}',this)">
           Analyse →
         </button>
         {% else %}
         <button class="btn btn-default" style="font-size:12px;padding:.3rem .8rem"
-          onclick="analyseTarget('{{ t.target_chembl_id }}','{{ max_res }}','{{ min_pc }}',this)">
+          onclick="analyseTarget('{{ t.target_chembl_id }}','{{ max_res }}','{{ min_pc }}','{{ max_bio }}',this)">
           Analyse →
         </button>
         {% endif %}
@@ -967,11 +982,11 @@ DISAMBIG_HTML = """<!DOCTYPE html>
   <a href="/" class="btn btn-default" style="margin-top:1.5rem;display:inline-block">← Back to search</a>
 </div>
 <script>
-function analyseTarget(q, maxRes, minPc, btn) {
+function analyseTarget(q, maxRes, minPc, maxBio, btn) {
   btn.disabled = true;
   var orig = btn.textContent;
   btn.textContent = '⏳ Loading…';
-  var url = '/recon/run?q=' + encodeURIComponent(q) + '&max_res=' + encodeURIComponent(maxRes) + '&min_pc=' + encodeURIComponent(minPc);
+  var url = '/recon/run?q=' + encodeURIComponent(q) + '&max_res=' + encodeURIComponent(maxRes) + '&min_pc=' + encodeURIComponent(minPc) + '&max_bio=' + encodeURIComponent(maxBio);
   fetch(url)
     .then(function(r){ return r.text(); })
     .then(function(html){
@@ -1052,6 +1067,7 @@ REPORT_HTML = r"""<!DOCTYPE html>
       <!-- Filters hidden in form -->
       <input type="hidden" name="max_res" id="hMaxRes" value="{{ max_res }}">
       <input type="hidden" name="min_pc"  id="hMinPc"  value="{{ min_pc }}">
+      <input type="hidden" name="max_bio" id="hMaxBio" value="{{ max_bio }}">
       <input type="hidden" name="use_chembl" id="hUseChembl" value="{{ '1' if use_chembl else '0' }}">
       <input type="hidden" name="use_bindingdb" id="hUseBdb" value="{{ '1' if use_bindingdb else '0' }}">
       <button type="submit" class="sb-btn sb-btn-primary" onclick="showSearchSpinner(this)">Search</button>
@@ -1085,6 +1101,15 @@ REPORT_HTML = r"""<!DOCTYPE html>
            oninput="upd('hMinPc','vMinPc',this.value)">
     <div class="sb-range-row">
       <span>0</span><span class="sb-range-val" id="vMinPc">{{ min_pc }}</span><span>12</span>
+    </div>
+
+    <span class="sb-label" style="text-transform:none;letter-spacing:0;font-size:11.5px;color:var(--muted)">
+      Max bioactivities
+    </span>
+    <input type="range" class="sb-range" id="rMaxBio" min="100" max="5000" step="100" value="{{ max_bio }}"
+           oninput="updBio('hMaxBio','vMaxBio',this.value)">
+    <div class="sb-range-row">
+      <span>100</span><span class="sb-range-val" id="vMaxBio">{{ max_bio if max_bio|int < 5000 else 'All' }}</span><span>All</span>
     </div>
   </div>
 
@@ -2120,6 +2145,12 @@ function upd(hiddenId, displayId, val) {
   var el = document.getElementById(displayId);
   if (el) el.textContent = hiddenId.includes('Res') ? val + ' Å' : val;
 }
+function updBio(hiddenId, displayId, val) {
+  var v = parseInt(val);
+  document.getElementById(hiddenId).value = v >= 5000 ? 10000 : v;
+  var el = document.getElementById(displayId);
+  if (el) el.textContent = v >= 5000 ? 'All' : val;
+}
 
 // ── Ligand table filter + download ───────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', filterLigands);
@@ -2250,6 +2281,7 @@ function _getParams(q) {
     q: q,
     max_res: document.getElementById('hMaxRes').value,
     min_pc:  document.getElementById('hMinPc').value,
+    max_bio: document.getElementById('hMaxBio').value,
     use_chembl:    document.getElementById('hUseChembl').value,
     use_bindingdb: document.getElementById('hUseBdb').value,
   });
@@ -2516,7 +2548,7 @@ function findTargets(btn) {
 """
 
 # ── Shared report render helper ───────────────────────────────────────────
-def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bindingdb=True):
+def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bindingdb=True, max_bio=1000):
     u    = report.uniprot
     gene = (u.gene_name if u else None) or q
 
@@ -2560,6 +2592,7 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bind
         has_sdf=bool(report.ligand_summary),
         max_res=max_res,
         min_pc=min_pc,
+        max_bio=max_bio,
         use_chembl=use_chembl,
         use_bindingdb=use_bindingdb,
         interactions_json=json.dumps([i.model_dump() for i in report.interactions]),
@@ -2586,6 +2619,7 @@ def disambiguate_run():
 
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
+    max_bio = int(request.args.get("max_bio", 1000))
 
     from targetrecon.resolver import classify_query, QueryType, fetch_compound_targets
 
@@ -2613,10 +2647,11 @@ def disambiguate_run():
             from targetrecon.core import recon_async
             try:
                 report = asyncio.run(recon_async(q, max_pdb_resolution=max_res,
+                    max_bioactivities=max_bio,
                     min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
             except Exception as exc:
                 return f"<html><body><p>Error: {exc}</p></body></html>", 500
-            return _render_report(report, q, max_res=max_res, min_pc=min_pc)
+            return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
         # It's a compound — show target selection table
         targets = asyncio.run(fetch_compound_targets(q, limit=20))
@@ -2633,16 +2668,17 @@ def disambiguate_run():
 
         return render_template_string(DISAMBIG_HTML,
             compound_id=q, targets=targets,
-            max_res=str(max_res), min_pc=str(min_pc))
+            max_res=str(max_res), min_pc=str(min_pc), max_bio=str(max_bio))
 
     # Not a CHEMBL query — run recon directly
     from targetrecon.core import recon_async
     try:
         report = asyncio.run(recon_async(q, max_pdb_resolution=max_res,
+            max_bioactivities=max_bio,
             min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
     except Exception as exc:
         return f"<html><body><p>Error: {exc}</p></body></html>", 500
-    return _render_report(report, q, max_res=max_res, min_pc=min_pc)
+    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
 
 @app.route("/disambiguate")
@@ -2713,11 +2749,12 @@ def recon_page():
 
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
+    max_bio = int(request.args.get("max_bio", 1000))
     use_chembl    = request.args.get("use_chembl", "1") == "1"
     use_bindingdb = request.args.get("use_bindingdb", "1") == "1"
 
     return render_template_string(LOADING_HTML, q=q,
-        max_res=max_res, min_pc=min_pc,
+        max_res=max_res, min_pc=min_pc, max_bio=max_bio,
         use_chembl="1" if use_chembl else "0",
         use_bindingdb="1" if use_bindingdb else "0",
     )
@@ -2732,6 +2769,7 @@ def recon_run():
 
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
+    max_bio = int(request.args.get("max_bio", 1000))
     use_chembl    = request.args.get("use_chembl", "1") == "1"
     use_bindingdb = request.args.get("use_bindingdb", "1") == "1"
 
@@ -2740,7 +2778,7 @@ def recon_run():
     if classify_query(q) == QueryType.CHEMBL:
         return redirect(url_for(
             "disambiguate_page", q=q.upper(),
-            max_res=max_res, min_pc=min_pc,
+            max_res=max_res, min_pc=min_pc, max_bio=max_bio,
         ))
 
     # Run recon
@@ -2749,6 +2787,7 @@ def recon_run():
         report = asyncio.run(recon_async(
             q,
             max_pdb_resolution=max_res,
+            max_bioactivities=max_bio,
             min_pchembl=min_pc if min_pc > 0 else None,
             use_chembl=use_chembl,
             use_bindingdb=use_bindingdb,
@@ -2785,7 +2824,7 @@ def recon_run():
     # Cache report for exports
     _report_cache[q.upper()] = report
 
-    return _render_report(report, q, max_res=max_res, min_pc=min_pc,
+    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
                           use_chembl=use_chembl, use_bindingdb=use_bindingdb)
 
 

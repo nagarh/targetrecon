@@ -84,6 +84,13 @@ def main(ctx: click.Context) -> None:
     help="Max PDB resolution in Å.",
 )
 @click.option(
+    "--max-bioactivities",
+    type=int,
+    default=1000,
+    show_default=True,
+    help="Max bioactivity records (0 = no limit).",
+)
+@click.option(
     "--min-pchembl",
     type=float,
     default=None,
@@ -108,6 +115,7 @@ def run(
     formats: tuple[str, ...],
     output_dir: str,
     max_resolution: float,
+    max_bioactivities: int,
     min_pchembl: float | None,
     top_ligands: int,
     quiet: bool,
@@ -146,6 +154,7 @@ def run(
             recon_async(
                 query,
                 max_pdb_resolution=max_resolution,
+                max_bioactivities=max_bioactivities if max_bioactivities > 0 else 100_000,
                 min_pchembl=min_pchembl,
                 verbose=not quiet,
             )
@@ -259,6 +268,8 @@ def serve(port: int, host: str, debug: bool) -> None:
               type=click.Choice(["json", "html", "sdf"], case_sensitive=False),
               default=["html", "json", "sdf"], help="Output formats.")
 @click.option("--max-resolution", type=float, default=4.0, show_default=True)
+@click.option("--max-bioactivities", type=int, default=1000, show_default=True,
+              help="Max bioactivity records (0 = no limit).")
 @click.option("--min-pchembl", type=float, default=None)
 @click.option("--top-ligands", type=int, default=20, show_default=True)
 @click.option("--skip-errors", is_flag=True, default=False,
@@ -270,6 +281,7 @@ def batch(
     output_dir: str,
     formats: tuple[str, ...],
     max_resolution: float,
+    max_bioactivities: int,
     min_pchembl: float | None,
     top_ligands: int,
     skip_errors: bool,
@@ -321,6 +333,7 @@ def batch(
         try:
             report = asyncio.run(recon_async(
                 q, max_pdb_resolution=max_resolution,
+                max_bioactivities=max_bioactivities if max_bioactivities > 0 else 100_000,
                 min_pchembl=min_pchembl, verbose=False,
             ))
             if report.uniprot is None:
