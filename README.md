@@ -199,7 +199,7 @@ report = asyncio.run(targetrecon.recon_async("BRAF"))
 
 ```
 src/targetrecon/
-├── cli.py           # Click CLI — run, serve, batch, export
+├── cli.py           # Click CLI — run, serve, batch
 ├── webapp.py        # Flask web app — UI, report pages, AI agent routes
 ├── core.py          # Orchestration, aggregation, export (HTML/JSON/SDF)
 ├── models.py        # Pydantic data models
