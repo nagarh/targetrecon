@@ -139,13 +139,19 @@ def recon(
     max_pdb_resolution: float = 4.0,
     min_pchembl: float | None = None,
 ) -> TargetReport:
-    return asyncio.run(
-        recon_async(
-            query,
-            max_pdb_resolution=max_pdb_resolution,
-            min_pchembl=min_pchembl,
-        )
+    coro = recon_async(
+        query,
+        max_pdb_resolution=max_pdb_resolution,
+        min_pchembl=min_pchembl,
     )
+    try:
+        asyncio.get_running_loop()
+        # Already inside a running event loop (e.g. Jupyter) — run in a thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, coro).result()
+    except RuntimeError:
+        return asyncio.run(coro)
 
 
 def _canonical_smiles(smiles: str) -> str:
