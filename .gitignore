@@ -52,7 +52,6 @@ batch_reports/
 # Project-specific
 resume.txt
 CLAUDE_CODE_HANDOFF.md
-app.py
 cli.py
 targetrecon_html_report_preview.html
 test_cli/

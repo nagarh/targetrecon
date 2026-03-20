@@ -111,6 +111,16 @@ var _cid='c'+Math.random().toString(36).slice(2,7);
 var _ctx=window.RECON_QUERY||null;
 var _open=false,_busy=false,_minimized=false,_curDiv=null,_curTxt='',_cards={},_partial='',_xhr=null;
 var _prov='anthropic',_model='claude-sonnet-4-6',_apiKey='';
+// ── Per-user session ID ────────────────────────────────────────────────
+(function(){
+  window._sid=sessionStorage.getItem('tr_session_id')||'';
+  if(!window._sid){
+    window._sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+      var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);
+    });
+    sessionStorage.setItem('tr_session_id',window._sid);
+  }
+})();
 
 /* Built-in markdown renderer — handles headers, bold, italic, code, tables, lists */
 function _inl(t){
@@ -180,9 +190,7 @@ function loadSettings(){
     var s=JSON.parse(localStorage.getItem('tr_agent_prefs')||'{}');
     _prov=s.provider||'anthropic';
     _model=s.model||'claude-sonnet-4-6';
-    /* Keys only from sessionStorage — gone when browser closes */
-    var ks=JSON.parse(sessionStorage.getItem('tr_agent_keys')||'{}');
-    _apiKey=(ks[_prov]&&ks[_prov].key)||'';
+    /* API key is never persisted — must be entered each page load */
   }catch(e){}
 }
 function saveSettings(){
@@ -190,14 +198,10 @@ function saveSettings(){
   var sel=$id('chatModelSel');
   if(sel)_model=sel.value;
   try{
-    /* Provider + model persist across sessions */
+    /* Provider + model persist across sessions; key is never stored */
     var s=JSON.parse(localStorage.getItem('tr_agent_prefs')||'{}');
     s.provider=_prov;s.model=_model;
     localStorage.setItem('tr_agent_prefs',JSON.stringify(s));
-    /* API keys + verified flags live only for this session */
-    var ks=JSON.parse(sessionStorage.getItem('tr_agent_keys')||'{}');
-    ks[_prov]={key:_apiKey,verified:false};
-    sessionStorage.setItem('tr_agent_keys',JSON.stringify(ks));
   }catch(e){}
   updateBadge();
 }
@@ -210,12 +214,6 @@ function setKeyStatus(ok,msg){
   bar.innerHTML=ok
     ?'<span style="color:#3fb950">&#10003; '+msg+'</span>'
     :'<span style="color:#f85149">&#10007; '+msg+'</span>';
-  try{
-    var ks=JSON.parse(sessionStorage.getItem('tr_agent_keys')||'{}');
-    if(!ks[_prov])ks[_prov]={};
-    ks[_prov].verified=ok;
-    sessionStorage.setItem('tr_agent_keys',JSON.stringify(ks));
-  }catch(e){}
   updateBadge();
 }
 window.onKeyInput=function(){saveSettings();setKeyStatus(null,'');};
@@ -246,12 +244,9 @@ window.selProv=function(prov,btn){
   _prov=prov;
   document.querySelectorAll('.prov-tab').forEach(function(t){t.classList.remove('active');});
   if(btn)btn.classList.add('active');
-  // Load key for this provider
-  try{
-    var ks=JSON.parse(sessionStorage.getItem('tr_agent_keys')||'{}');
-    _apiKey=(ks[prov]&&ks[prov].key)||'';
-  }catch(e){_apiKey='';}
-  var ki=$id('chatApiKey');if(ki)ki.value=_apiKey;
+  // Key is not persisted — clear field when switching provider
+  _apiKey='';
+  var ki=$id('chatApiKey');if(ki)ki.value='';
   // Update model dropdown
   var sel=$id('chatModelSel');
   if(sel){
@@ -285,13 +280,8 @@ window.toggleSettings=function(){
       if(ms.indexOf(_model)>=0)sel.value=_model;
     }
     var ki=$id('chatApiKey');if(ki)ki.value=_apiKey;
-    try{
-      var ks2=JSON.parse(sessionStorage.getItem('tr_agent_keys')||'{}');
-      var verified=ks2[_prov]&&ks2[_prov].verified;
-      if(_apiKey&&verified===true) setKeyStatus(true,'Key accepted by '+_prov);
-      else if(_apiKey) setKeyStatus(null,'Key saved — click Test to verify');
-      else setKeyStatus(null,'Enter your API key');
-    }catch(e){}
+    if(_apiKey) setKeyStatus(null,'Key entered — click Test to verify');
+    else setKeyStatus(null,'Enter your API key');
   }
 };
 // Keep model in sync when select changes
@@ -525,7 +515,7 @@ function stream(msg){
       _curDiv=null;scroll();saveState();
     }
   };
-  _xhr.send(JSON.stringify({message:msg,conv_id:_cid,context_query:_ctx,provider:_prov,model:_model,api_key:_apiKey}));
+  _xhr.send(JSON.stringify({message:msg,conv_id:_cid,context_query:_ctx,provider:_prov,model:_model,api_key:_apiKey,session_id:window._sid||''}));
 }
 function proc(chunk){
   var txt=_partial+chunk;_partial='';
@@ -581,6 +571,7 @@ function handle(ev){
   }
 }
 
+try{sessionStorage.removeItem('tr_agent_keys');}catch(e){}
 loadSettings();
 restoreState();
 })();
@@ -851,6 +842,7 @@ LOADING_HTML = """<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="0;url=/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}">
+<script>(function(){var sid='';try{sid=sessionStorage.getItem('tr_session_id')||'';}catch(e){}var url='/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}'+(sid?'&sid='+encodeURIComponent(sid):'');window.location.replace(url);})();</script>
 <title>Searching {{ q }} — TargetRecon</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -986,7 +978,8 @@ function analyseTarget(q, maxRes, minPc, maxBio, btn) {
   btn.disabled = true;
   var orig = btn.textContent;
   btn.textContent = '⏳ Loading…';
-  var url = '/recon/run?q=' + encodeURIComponent(q) + '&max_res=' + encodeURIComponent(maxRes) + '&min_pc=' + encodeURIComponent(minPc) + '&max_bio=' + encodeURIComponent(maxBio);
+  var sid = window._sid || (sessionStorage ? sessionStorage.getItem('tr_session_id') : '') || '';
+  var url = '/recon/run?q=' + encodeURIComponent(q) + '&max_res=' + encodeURIComponent(maxRes) + '&min_pc=' + encodeURIComponent(minPc) + '&max_bio=' + encodeURIComponent(maxBio) + (sid ? '&sid=' + encodeURIComponent(sid) : '');
   fetch(url)
     .then(function(r){ return r.text(); })
     .then(function(html){
@@ -2204,6 +2197,7 @@ function downloadSDF() {
   if (maxNm)  params.set('max_nm', maxNm);
   if (atype)  params.set('atype', atype);
   if (limit && parseInt(limit) > 0) params.set('top_n', limit);
+  params.set('sid', window._sid||'');
 
   window.location.href = '/export/sdf?' + params.toString();
 }
@@ -2263,6 +2257,7 @@ function _getParams(q) {
     max_bio: document.getElementById('hMaxBio').value,
     use_chembl:    document.getElementById('hUseChembl').value,
     use_bindingdb: document.getElementById('hUseBdb').value,
+    sid:     window._sid||'',
   });
 }
 function _doSearch(q) {
@@ -2285,6 +2280,12 @@ function showSearchSpinner() {}
 function showSearchOverlay(q) { _doSearch(q); }
 </script>
 <script>window.RECON_QUERY = {{ query_json | safe }};</script>
+<script>
+(function(){
+  var sid='';try{sid=window._sid||sessionStorage.getItem('tr_session_id')||'';}catch(e){}
+  if(sid){document.querySelectorAll('a[href^="/export/"]').forEach(function(a){a.href+='&sid='+encodeURIComponent(sid);});}
+})();
+</script>
 {{ chat_panel | safe }}
 </body>
 </html>
@@ -2635,6 +2636,8 @@ def disambiguate_run():
                     min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
             except Exception as exc:
                 return f"<html><body><p>Error: {exc}</p></body></html>", 500
+            sid = request.args.get("sid", "").strip()
+            _session_reports(sid)[q.upper()] = report
             return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
         # It's a compound — show target selection table
@@ -2662,6 +2665,8 @@ def disambiguate_run():
             min_pchembl=min_pc if min_pc > 0 else None, verbose=False))
     except Exception as exc:
         return f"<html><body><p>Error: {exc}</p></body></html>", 500
+    sid = request.args.get("sid", "").strip()
+    _session_reports(sid)[q.upper()] = report
     return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
 
@@ -2805,15 +2810,57 @@ def recon_run():
   <a href="/" class="btn btn-default" style="display:inline-block;margin-top:1rem">← Back</a>
 </div></body></html>""", q=q), 404
 
-    # Cache report for exports
-    _report_cache[q.upper()] = report
+    # Cache report per-session for exports
+    sid = request.args.get("sid", "").strip()
+    _session_reports(sid)[q.upper()] = report
 
     return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
                           use_chembl=use_chembl, use_bindingdb=use_bindingdb)
 
 
 # ── Export routes ──────────────────────────────────────────────────────────
-_report_cache: dict = {}
+# ── Per-user session cache ─────────────────────────────────────────────────
+import threading as _thr
+import time as _ti
+import uuid as _uuidmod
+
+_SESSION_TTL = 1800  # 30 min inactivity → auto-cleanup
+_sessions: dict[str, dict] = {}
+_sessions_lock = _thr.Lock()
+
+
+def _session_reports(sid: str) -> dict:
+    """Return (and touch) the report cache dict for this session."""
+    with _sessions_lock:
+        if sid not in _sessions:
+            _sessions[sid] = {"reports": {}, "ts": _ti.time()}
+        else:
+            _sessions[sid]["ts"] = _ti.time()
+        return _sessions[sid]["reports"]
+
+
+def _start_session_cleanup() -> None:
+    def _loop() -> None:
+        while True:
+            _ti.sleep(300)
+            now = _ti.time()
+            with _sessions_lock:
+                expired = [s for s, d in list(_sessions.items()) if now - d["ts"] > _SESSION_TTL]
+                for s in expired:
+                    _sessions.pop(s, None)
+    _thr.Thread(target=_loop, daemon=True).start()
+
+
+_start_session_cleanup()
+
+
+@app.route("/api/session", methods=["POST"])
+def create_session():
+    sid = str(_uuidmod.uuid4())
+    with _sessions_lock:
+        _sessions[sid] = {"reports": {}, "ts": _ti.time()}
+    return jsonify({"session_id": sid})
+
 
 @app.route("/sketcher")
 def sketcher_page():
@@ -2911,7 +2958,8 @@ def molfile_to_smiles():
 @app.route("/export/json")
 def export_json():
     q = request.args.get("q","").strip().upper()
-    report = _report_cache.get(q)
+    sid = request.args.get("sid", "").strip()
+    report = _session_reports(sid).get(q)
     if not report:
         return "Run a search first", 400
     from flask import Response
@@ -2925,7 +2973,8 @@ def export_json():
 @app.route("/export/html")
 def export_html_route():
     q = request.args.get("q","").strip().upper()
-    report = _report_cache.get(q)
+    sid = request.args.get("sid", "").strip()
+    report = _session_reports(sid).get(q)
     if not report:
         return "Run a search first", 400
     from flask import Response
@@ -2945,8 +2994,9 @@ def export_sdf_route():
     max_nm      = request.args.get("max_nm", "")
     atype       = request.args.get("atype", "").strip()
     top_n       = request.args.get("top_n", "")
+    sid         = request.args.get("sid", "").strip()
 
-    report = _report_cache.get(q)
+    report = _session_reports(sid).get(q)
     if not report:
         return "Run a search first", 400
 
@@ -3005,8 +3055,10 @@ def agent_chat_stream():
         err_event = 'data: {"type":"error","message":"No API key provided. Enter your key in the settings panel."}\n\n'
         return Response(err_event, mimetype="text/event-stream")
 
+    sid = data.get("session_id", "").strip()
+
     def _gen():
-        yield from sse_generator(message, conv_id, context_query, _report_cache, provider, model, api_key)
+        yield from sse_generator(message, conv_id, context_query, _session_reports(sid), provider, model, api_key)
 
     return Response(
         stream_with_context(_gen()),
@@ -3078,8 +3130,9 @@ def agent_test_key():
 
 @app.route("/agent/cache/status")
 def agent_cache_status():
+    sid = request.args.get("sid", "").strip()
     cached = []
-    for key, report in _report_cache.items():
+    for key, report in _session_reports(sid).items():
         if report and report.uniprot:
             cached.append({"key": key, "gene": report.uniprot.gene_name, "uniprot": report.uniprot.uniprot_id})
     return jsonify({"cached": cached})
