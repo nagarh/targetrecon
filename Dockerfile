@@ -2,9 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir targetrecon==0.1.8
-
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
 COPY app.py .
+
+RUN pip install --no-cache-dir .
 
 EXPOSE 7860
 
