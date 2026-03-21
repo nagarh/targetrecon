@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir targetrecon==0.1.7
+RUN pip install --no-cache-dir targetrecon==0.1.8
 
 COPY app.py .
 

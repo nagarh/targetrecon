@@ -25,10 +25,10 @@ async def fetch_alphafold(uniprot_id: str) -> AlphaFoldModel | None:
 
     # API failed (intermittent 500) — fall back to standard URL pattern
     # AlphaFold file naming is predictable: AF-{uniprot_id}-F1-model_v{version}.pdb
-    fallback_url = f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v4.pdb"
+    fallback_url = f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v6.pdb"
     return AlphaFoldModel(
         uniprot_id=uniprot_id,
         pdb_url=fallback_url,
-        model_url=f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v4.cif",
-        version=4,
+        model_url=f"https://alphafold.ebi.ac.uk/files/AF-{uniprot_id}-F1-model_v6.cif",
+        version=6,
     )
