@@ -1,24 +1,16 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-≥3.10-blue?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/version-0.1.0-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.1.1-orange" alt="Version">
   <img src="https://img.shields.io/badge/databases-5-purple" alt="Databases">
+  <img src="https://img.shields.io/pypi/v/targetrecon?color=blue" alt="PyPI">
 </p>
 
 <h1 align="center">TargetRecon</h1>
-<p align="center"><b>Drug target intelligence in one command.</b></p>
+<p align="center"><b>Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command.</b></p>
 <p align="center">
   Aggregate UniProt · PDB · AlphaFold · ChEMBL · BindingDB into a single interactive report — in seconds.
 </p>
-
----
-
-```bash
-pip install targetrecon
-targetrecon EGFR
-```
-
-Produces `EGFR_report.html` (interactive, self-contained), `EGFR_report.json`, and `EGFR_top_ligands.sdf` — ready for docking.
 
 ---
 
@@ -420,6 +412,12 @@ for r in reports:
 ```bash
 pip install targetrecon
 ```
+
+**Quick start:**
+```bash
+targetrecon EGFR
+```
+Produces `EGFR_report.html` (interactive, self-contained), `EGFR_report.json`, and `EGFR_top_ligands.sdf` — ready for docking.
 
 **Development:**
 ```bash
