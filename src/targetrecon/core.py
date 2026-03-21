@@ -269,6 +269,6 @@ def save_sdf(
     except ImportError:
         with open(p, "w") as f:
             for lig in top_ligands:
-                f.write(f"{lig.smiles}\n  TargetRecon 0.1.0\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END\n> <SMILES>\n{lig.smiles}\n\n$$$$\n")
+                f.write(f"{lig.smiles}\n  TargetRecon 0.1.6\n\n  0  0  0  0  0  0  0  0  0  0999 V2000\nM  END\n> <SMILES>\n{lig.smiles}\n\n$$$$\n")
 
     return p

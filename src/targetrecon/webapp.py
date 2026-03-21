@@ -8,6 +8,8 @@ import sys
 import threading
 from pathlib import Path
 
+from targetrecon import __version__ as _version
+
 from flask import Flask, jsonify, redirect, render_template_string, request, url_for
 
 app = Flask(
@@ -699,7 +701,7 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
   </div>
 
-  <div class="sb-version">TargetRecon v0.1.0</div>
+  <div class="sb-version">TargetRecon v{{ version }}</div>
 </aside>
 
 <!-- ── Main content ── -->
@@ -1177,7 +1179,7 @@ REPORT_HTML = r"""<!DOCTYPE html>
     {% endif %}
   </div>
 
-  <div class="sb-version">TargetRecon v0.1.0</div>
+  <div class="sb-version">TargetRecon v{{ version }}</div>
 </aside>
 
 <!-- ── Main content ── -->
@@ -1634,7 +1636,7 @@ REPORT_HTML = r"""<!DOCTYPE html>
   </div><!-- /tabs section -->
 
   <div style="text-align:center;font-size:11.5px;color:#30363d;margin-top:2rem;padding-top:1.5rem;border-top:1px solid #21262d">
-    TargetRecon v0.1.0 &nbsp;·&nbsp; UniProt · RCSB PDB · AlphaFold DB · ChEMBL · BindingDB
+    TargetRecon v{{ version }} &nbsp;·&nbsp; UniProt · RCSB PDB · AlphaFold DB · ChEMBL · BindingDB
   </div>
 
 </div><!-- /main-content inner -->
@@ -2642,6 +2644,7 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bind
         interactions_json=json.dumps([i.model_dump() for i in report.interactions]),
         gene_json=json.dumps(gene),
         chat_panel=_CHAT_PANEL_HTML,
+        version=_version,
     )
 
 
@@ -2651,7 +2654,7 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bind
 
 @app.route("/")
 def index():
-    return render_template_string(INDEX_HTML, chat_panel=_CHAT_PANEL_HTML)
+    return render_template_string(INDEX_HTML, chat_panel=_CHAT_PANEL_HTML, version=_version)
 
 
 @app.route("/disambiguate/run")
