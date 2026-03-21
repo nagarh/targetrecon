@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "targetrecon"
-version = "0.1.2"
+version = "0.1.3"
 description = "Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command."
 readme = "README.md"
 license = "MIT"
@@ -61,10 +61,10 @@ dev = [
 targetrecon = "targetrecon.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/hyadav/targetrecon"
-Documentation = "https://github.com/hyadav/targetrecon#readme"
-Repository = "https://github.com/hyadav/targetrecon"
-Issues = "https://github.com/hyadav/targetrecon/issues"
+Homepage = "https://github.com/nagarh/targetrecon"
+Documentation = "https://github.com/nagarh/targetrecon#readme"
+Repository = "https://github.com/nagarh/targetrecon"
+Issues = "https://github.com/nagarh/targetrecon/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/targetrecon"]

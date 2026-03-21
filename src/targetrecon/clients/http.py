@@ -6,7 +6,7 @@ from typing import Any
 import httpx
 
 DEFAULT_TIMEOUT = 30.0
-USER_AGENT = "TargetRecon/0.1.0 (drug target intelligence; github.com/hyadav/targetrecon)"
+USER_AGENT = "TargetRecon/0.1.2 (drug target intelligence; github.com/nagarh/targetrecon)"
 
 
 def build_client(timeout: float = DEFAULT_TIMEOUT) -> httpx.AsyncClient:
