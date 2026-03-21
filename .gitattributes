@@ -1,6 +1,6 @@
-src/targetrecon/static/ketcher/cjs/main.js filter=lfs diff=lfs merge=lfs -text
-src/targetrecon/static/ketcher/main.js filter=lfs diff=lfs merge=lfs -text
-src/targetrecon/static/ketcher2/static/js/closable.f917306d.js filter=lfs diff=lfs merge=lfs -text
 src/targetrecon/static/ketcher2/static/js/duo.a834e77e.js filter=lfs diff=lfs merge=lfs -text
 src/targetrecon/static/ketcher2/static/js/main.39bce846.js filter=lfs diff=lfs merge=lfs -text
 src/targetrecon/static/ketcher2/static/js/popup.d7c51bb9.js filter=lfs diff=lfs merge=lfs -text
+src/targetrecon/static/ketcher/cjs/main.js filter=lfs diff=lfs merge=lfs -text
+src/targetrecon/static/ketcher/main.js filter=lfs diff=lfs merge=lfs -text
+src/targetrecon/static/ketcher2/static/js/closable.f917306d.js filter=lfs diff=lfs merge=lfs -text
