@@ -72,7 +72,7 @@ TOOL_DEFS = [
         "description": (
             "Run a full drug-target intelligence search for a protein target. "
             "Fetches UniProt annotation, PDB crystal structures, AlphaFold model, "
-            "ChEMBL and BindingDB bioactivities, ligand summaries, and STRING-DB "
+            "ChEMBL bioactivities, ligand summaries, and STRING-DB "
             "protein interactions. Results are cached server-side for follow-up queries. "
             "Always call this before get_top_ligands, get_pdb_structures, or filter_bioactivities."
         ),
@@ -91,9 +91,7 @@ TOOL_DEFS = [
                     "type": "number",
                     "description": "Maximum PDB resolution in Angstroms (default 4.0). Optional."
                 },
-                "use_chembl": {"type": "boolean", "description": "Include ChEMBL bioactivities (default true)"},
-                "use_bindingdb": {"type": "boolean", "description": "Include BindingDB bioactivities (default true)"},
-                "max_bioactivities": {"type": "integer", "description": "Max bioactivity records per database (default 1000, null = unlimited)"}
+                "max_bioactivities": {"type": "integer", "description": "Max bioactivity records from ChEMBL (default 1000, null = unlimited)"}
             },
             "required": ["query"]
         }
@@ -111,7 +109,7 @@ TOOL_DEFS = [
                 "top_n": {"type": "integer", "description": "Number of top ligands to return (default 10, max 50)"},
                 "min_pchembl": {"type": "number", "description": "Minimum pChEMBL filter"},
                 "activity_type": {"type": "string", "description": "Filter by assay type: IC50, Ki, Kd, EC50, etc."},
-                "source": {"type": "string", "enum": ["ChEMBL", "BindingDB", "all"], "description": "Data source filter (default all)"}
+                "source": {"type": "string", "enum": ["ChEMBL", "all"], "description": "Data source filter (default all)"}
             },
             "required": ["query"]
         }
@@ -226,7 +224,7 @@ TOOL_DEFS = [
                 "min_pchembl": {"type": "number", "description": "Minimum pChEMBL filter"},
                 "max_pchembl": {"type": "number", "description": "Maximum pChEMBL filter"},
                 "activity_type": {"type": "string", "description": "IC50, Ki, Kd, EC50, GI50, etc."},
-                "source": {"type": "string", "enum": ["ChEMBL", "BindingDB", "all"]},
+                "source": {"type": "string", "enum": ["ChEMBL", "all"]},
                 "top_n": {"type": "integer", "description": "Number of records to include in result (default 15)"}
             },
             "required": ["query"]
@@ -339,7 +337,7 @@ TOOL_DISPLAY = {
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a specialized AI assistant embedded in TargetRecon, a drug-target intelligence platform used by medicinal chemists and drug discovery scientists.
 
-You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, BindingDB, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). ALWAYS use tools to get data — never generate, estimate, or recall numbers, properties, structures, or analysis results from your training knowledge. Every number in your response must come from a tool result.
+You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). ALWAYS use tools to get data — never generate, estimate, or recall numbers, properties, structures, or analysis results from your training knowledge. Every number in your response must come from a tool result.
 
 Guidelines:
 - Use **bold** for gene names, `code` for IDs (UniProt, PDB, ChEMBL), and tables for comparisons
@@ -369,16 +367,12 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
     query = inputs["query"].strip()
     min_pchembl = inputs.get("min_pchembl")
     max_res = float(inputs.get("max_pdb_resolution", 4.0))
-    use_chembl = inputs.get("use_chembl", True)
-    use_bindingdb = inputs.get("use_bindingdb", True)
     max_bioactivities = inputs.get("max_bioactivities", 1000)
 
     report = await recon_async(
         query,
         max_pdb_resolution=max_res,
         min_pchembl=min_pchembl if min_pchembl else None,
-        use_chembl=use_chembl,
-        use_bindingdb=use_bindingdb,
         max_bioactivities=max_bioactivities,
         verbose=False,
     )
@@ -993,7 +987,7 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
     gene = (report.uniprot.gene_name if report.uniprot else None) or query
 
     def _clean_smiles(smi: str) -> str:
-        """Strip BindingDB extended SMILES notation (|...|) — RDKit doesn't need it."""
+        """Strip extended SMILES notation (|...|) — RDKit doesn't need it."""
         if smi and " |" in smi:
             smi = smi[:smi.index(" |")]
         return smi or ""

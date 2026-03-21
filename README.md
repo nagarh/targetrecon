@@ -12,27 +12,27 @@ pinned: false
   <img src="https://img.shields.io/badge/python-≥3.10-blue?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/version-0.1.8-orange" alt="Version">
-  <img src="https://img.shields.io/badge/databases-5-purple" alt="Databases">
+  <img src="https://img.shields.io/badge/databases-4-purple" alt="Databases">
   <img src="https://img.shields.io/pypi/v/targetrecon?color=blue" alt="PyPI">
 </p>
 
 <h1 align="center">TargetRecon</h1>
 <p align="center"><b>Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command.</b></p>
 <p align="center">
-  Aggregate UniProt · PDB · AlphaFold · ChEMBL · BindingDB into a single interactive report — in seconds.
+  Aggregate UniProt · PDB · AlphaFold · ChEMBL · STRING-DB into a single interactive report — in seconds.
 </p>
 
 ---
 
 ## What is TargetRecon?
 
-TargetRecon is a Python CLI and web app that pulls data from **5 public databases** and compiles it into a single, richly formatted report for any protein drug target. No API keys. No account. No manual copy-pasting.
+TargetRecon is a Python CLI and web app that pulls data from **4 public databases** and compiles it into a single, richly formatted report for any protein drug target. No API keys. No account. No manual copy-pasting.
 
 Think of it as [`gget`](https://github.com/pachterlab/gget) for drug discovery — or [TargetDB](https://github.com/sdecesco/targetDB) reimagined for the AlphaFold era.
 
 ---
 
-## Five Data Sources, One Report
+## Four Data Sources, One Report
 
 | Source | Data |
 |---|---|
@@ -40,7 +40,7 @@ Think of it as [`gget`](https://github.com/pachterlab/gget) for drug discovery �
 | **RCSB PDB** | Up to 50 experimental structures, filtered by resolution (default ≤ 4.0 Å), sorted by resolution ascending |
 | **AlphaFold DB** | Predicted structure with pLDDT confidence coloring |
 | **ChEMBL** | Bioactivity data (IC50, Ki, Kd, EC50) sorted by pChEMBL descending |
-| **BindingDB** | Binding affinity measurements converted to pChEMBL, sorted by potency |
+| **STRING-DB** | Protein–protein interaction network |
 
 ### Intelligent ID Resolution
 
@@ -71,13 +71,7 @@ pChEMBL = -log₁₀(affinity_M)
 | 6 | 1 µM | Moderate |
 | < 5 | > 10 µM | Weak |
 
-ChEMBL natively reports pChEMBL. BindingDB reports raw affinities in nM, which TargetRecon converts using the same formula:
-
-```
-pChEMBL = -log₁₀(affinity_nM × 10⁻⁹)
-```
-
-This makes ChEMBL and BindingDB values directly comparable on the same scale.
+ChEMBL natively reports pChEMBL values. TargetRecon uses this scale directly.
 
 ### Full pipeline — what happens when you run a query
 
@@ -87,68 +81,54 @@ This makes ChEMBL and BindingDB values directly comparable on the same scale.
          ▼
 2. Fetch in parallel (async):
    ├── ChEMBL API  → top-N bioactivity records, sorted by pChEMBL desc (server-side)
-   ├── BindingDB API → all records for this UniProt ID (one bulk request)
    ├── RCSB PDB    → experimental structures
    ├── AlphaFold   → predicted structure
    └── STRING DB   → protein interactions
          │
          ▼
-3. BindingDB: sort by pChEMBL descending (client-side), apply cap
+3. Apply min_pchembl filter (if set) to ChEMBL records
          │
          ▼
-4. Merge ChEMBL + BindingDB records into one list
+4. Deduplicate by canonical SMILES → Ligand Summary
          │
          ▼
-5. Apply min_pchembl filter (if set) across the merged list
+5. Sort Ligand Summary by best pChEMBL descending
          │
          ▼
-6. Deduplicate by canonical SMILES → Ligand Summary
-   (same molecule from both sources → one entry, best pChEMBL kept)
-         │
-         ▼
-7. Sort Ligand Summary by best pChEMBL descending
-         │
-         ▼
-8. Output: TargetReport (bioactivities + ligand_summary + structures + ...)
+6. Output: TargetReport (bioactivities + ligand_summary + structures + ...)
 ```
 
-### Fetching strategy per source
+### Fetching strategy
 
 **ChEMBL** — server-side sort + pagination:
 - Sends `order_by=-pchembl_value` to the API
 - Only the top-N most potent records are fetched — no wasted API calls
 - Records with no pChEMBL value are excluded at the API level
 
-**BindingDB** — one bulk request + client-side sort:
-- Fetches all records for the UniProt ID in a single HTTP call (no pagination)
-- Sorts by pChEMBL descending locally, then applies the cap
-- Records with no valid affinity value are discarded
-
 ### Cap behavior
 
-The default is **1000 per DB**:
+The default is **1000 records**:
 
-| Setting | ChEMBL | BindingDB | Total |
-|---|---|---|---|
-| Default (1000) | top 1000 most potent | top 1000 most potent | up to 2000 |
-| `--max-bioactivities 500` | top 500 most potent | top 500 most potent | up to 1000 |
-| `--max-bioactivities all` | all records | all records | all available |
+| Setting | ChEMBL | Total |
+|---|---|---|
+| Default (1000) | top 1000 most potent | up to 1000 |
+| `--max-bioactivities 500` | top 500 most potent | up to 500 |
+| `--max-bioactivities all` | all records | all available |
 
 Because sorting happens **before** the cap, you always get the most potent compounds — never a random subset.
 
 | Interface | No-limit syntax |
 |---|---|
 | CLI | `--max-bioactivities all` |
-| Web UI | Drag the *Max bioactivities per DB* slider to **All** |
+| Web UI | Drag the *Max bioactivities* slider to **All** |
 | Python API | `max_bioactivities=None` |
 
 ### Ligand deduplication
 
-After merging ChEMBL and BindingDB, all records are grouped by **canonical SMILES** (via RDKit). If the same molecule appears in both databases:
+ChEMBL records are grouped by **canonical SMILES** (via RDKit). If the same molecule appears in multiple assays:
 - It becomes **one entry** in the Ligand Summary
 - The **best pChEMBL** across all assays is kept
-- `sources` lists both databases (e.g. `["ChEMBL", "BindingDB"]`)
-- `num_assays` counts the total assay measurements across both sources
+- `num_assays` counts the total assay measurements
 
 The final Ligand Summary is sorted by best pChEMBL descending — the most potent unique compound is always first.
 
@@ -166,10 +146,9 @@ pip install targetrecon
 targetrecon EGFR
 targetrecon P00533 -f html -f json -f sdf -o ./reports/
 targetrecon BRAF --min-pchembl 7.0 --max-resolution 2.5
-targetrecon CDK2 --max-bioactivities 5000         # up to 5000 per source
+targetrecon CDK2 --max-bioactivities 5000         # up to 5000 records
 targetrecon CDK2 --max-bioactivities all          # no limit
-targetrecon CDK2 --no-bindingdb                   # ChEMBL only
-targetrecon CDK2 --no-chembl                      # BindingDB only
+targetrecon CDK2 --no-chembl                      # skip ChEMBL bioactivity data
 ```
 
 | Option | Default | Description |
@@ -177,11 +156,9 @@ targetrecon CDK2 --no-chembl                      # BindingDB only
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
 | `-o, --output PATH` | `.` | Output directory |
 | `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å (up to 50 structures returned, sorted by resolution) |
-| `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
+| `--max-bioactivities INT\|all` | `1000` | Max ChEMBL bioactivity records; `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Number of top ligands for SDF export |
-| `--use-chembl / --no-chembl` | on | Include ChEMBL bioactivity data |
-| `--use-bindingdb / --no-bindingdb` | on | Include BindingDB bioactivity data |
 | `-q, --quiet` | off | Suppress progress messages |
 
 ### `targetrecon batch` — Multiple targets
@@ -196,9 +173,6 @@ targetrecon batch -i targets.txt
 # With filters and format selection
 targetrecon batch -i targets.txt -f html -f sdf --min-pchembl 6.0 --skip-errors
 
-# ChEMBL only for all targets
-targetrecon batch EGFR BRAF --no-bindingdb
-
 # Unlimited bioactivities
 targetrecon batch -i targets.txt --max-bioactivities all
 ```
@@ -209,11 +183,9 @@ targetrecon batch -i targets.txt --max-bioactivities all
 | `-o, --output PATH` | `./batch_reports` | Output directory |
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
 | `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å (up to 50 structures returned, sorted by resolution) |
-| `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
+| `--max-bioactivities INT\|all` | `1000` | Max ChEMBL bioactivity records; `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Ligands per SDF file |
-| `--use-chembl / --no-chembl` | on | Include ChEMBL bioactivity data |
-| `--use-bindingdb / --no-bindingdb` | on | Include BindingDB bioactivity data |
 | `--skip-errors` | off | Continue if a single target fails |
 | `-q, --quiet` | off | Suppress progress messages |
 
@@ -245,7 +217,7 @@ targetrecon serve
 - Dark-themed interface with animated molecular backdrop
 - Search by gene name, UniProt accession, or ChEMBL target ID
 - **Molecule sketcher** (Ketcher) — draw a structure to find matching targets
-- Sidebar controls: max PDB resolution, min pChEMBL, ChEMBL/BindingDB toggles, **max bioactivities slider** (100–5000, or drag to **All** for no limit)
+- Sidebar controls: max PDB resolution, min pChEMBL, ChEMBL toggle, **max bioactivities slider** (100–5000, or drag to **All** for no limit)
 
 ### Report tabs
 
@@ -303,7 +275,7 @@ import targetrecon
 report = targetrecon.recon("EGFR")
 print(report.uniprot.protein_name)      # "Epidermal growth factor receptor"
 print(report.num_pdb_structures)         # 50
-print(report.num_bioactivities)          # up to 2000 (1000 ChEMBL + 1000 BindingDB)
+print(report.num_bioactivities)          # up to 1000 (default ChEMBL cap)
 print(report.best_ligand.best_pchembl)   # e.g. 10.52
 
 # With options
@@ -324,8 +296,6 @@ report = asyncio.run(targetrecon.recon_async("BRAF"))
 # Async with all options
 report = asyncio.run(targetrecon.recon_async(
     "CDK2",
-    use_chembl=True,
-    use_bindingdb=False,      # ChEMBL only
     max_bioactivities=2000,
     # max_bioactivities=None  # no limit
 ))
@@ -362,7 +332,7 @@ for b in report.bioactivities[:10]:
 # Ligand summary (deduplicated by canonical SMILES, sorted by best pChEMBL)
 for lig in report.ligand_summary[:10]:
     print(lig.name, lig.chembl_id, lig.best_pchembl, lig.best_activity_type, lig.num_assays)
-    print(lig.sources)                # e.g. ["ChEMBL", "BindingDB"]
+    print(lig.sources)                # e.g. ["ChEMBL"]
 
 report.best_ligand               # most potent unique ligand overall
 ```
@@ -406,7 +376,6 @@ for r in reports:
 |---|:---:|:---:|:---:|:---:|
 | AlphaFold integration | ✅ | ❌ | ✅ | ✅ (web) |
 | ChEMBL bioactivity | ✅ | ✅ | ❌ | Partial |
-| BindingDB binding constants | ✅ | ❌ | ❌ | ❌ |
 | Interactive HTML report | ✅ | ❌ | ❌ | Web only |
 | 3D structure viewer | ✅ | ❌ | ❌ | Web only |
 | Molecule sketcher → targets | ✅ | ❌ | ❌ | ❌ |
@@ -454,14 +423,14 @@ src/targetrecon/
     ├── pdb_client.py# RCSB PDB REST + Search API
     ├── alphafold.py # AlphaFold Database API
     ├── chembl.py    # ChEMBL REST API
-    └── bindingdb.py # BindingDB REST API
+    └── string_db.py # STRING-DB REST API
 ```
 
 ---
 
 ## Acknowledgments
 
-Data from: [UniProt](https://www.uniprot.org/) · [RCSB PDB](https://www.rcsb.org/) · [AlphaFold DB](https://alphafold.ebi.ac.uk/) · [ChEMBL](https://www.ebi.ac.uk/chembl/) · [BindingDB](https://www.bindingdb.org/)
+Data from: [UniProt](https://www.uniprot.org/) · [RCSB PDB](https://www.rcsb.org/) · [AlphaFold DB](https://alphafold.ebi.ac.uk/) · [ChEMBL](https://www.ebi.ac.uk/chembl/) · [STRING-DB](https://string-db.org/)
 
 Visualization: [3Dmol.js](https://3dmol.csb.pitt.edu/) · [Chart.js](https://www.chartjs.org/) · [Cytoscape.js](https://js.cytoscape.org/)
 

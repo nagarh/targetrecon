@@ -19,12 +19,9 @@ async def recon_async(
     max_pdb_structures: int = 50,
     max_bioactivities: int | None = 1000,
     min_pchembl: float | None = None,
-    use_chembl: bool = True,
-    use_bindingdb: bool = True,
     verbose: bool = True,
 ) -> TargetReport:
     from targetrecon.clients.alphafold import fetch_alphafold
-    from targetrecon.clients.bindingdb import fetch_bioactivities_by_uniprot
     from targetrecon.clients.chembl import fetch_bioactivities_by_target
     from targetrecon.clients.pdb_client import fetch_structures_for_uniprot
     from targetrecon.clients.string_db import fetch_interactions
@@ -46,7 +43,7 @@ async def recon_async(
         return TargetReport(query=query)
 
     # Fetch UniProt first so we get the canonical accession (merged/inactive entries
-    # redirect to the canonical entry; PDB/AlphaFold/BindingDB only know the canonical ID)
+    # redirect to the canonical entry; PDB/AlphaFold only know the canonical ID)
     uniprot_info = await fetch_uniprot(uniprot_id)
     canonical_id = (uniprot_info.uniprot_id if uniprot_info else None) or uniprot_id
 
@@ -59,9 +56,9 @@ async def recon_async(
         console.print(
             f"[cyan]UniProt: {canonical_id}  |  ChEMBL: {chembl_id or 'not found'}[/cyan]"
         )
-        console.print("[cyan]Fetching data from 5 sources in parallel...[/cyan]")
+        console.print("[cyan]Fetching data from 4 sources in parallel...[/cyan]")
 
-    # Parallel fetch via TaskGroup (using canonical_id so PDB/AlphaFold/BindingDB resolve correctly)
+    # Parallel fetch via TaskGroup (using canonical_id so PDB/AlphaFold resolve correctly)
     async with asyncio.TaskGroup() as tg:
         pdb_task = tg.create_task(
             fetch_structures_for_uniprot(
@@ -72,7 +69,7 @@ async def recon_async(
         )
         af_task = tg.create_task(fetch_alphafold(canonical_id))
 
-        if chembl_id and use_chembl:
+        if chembl_id:
             chembl_task: asyncio.Task | None = tg.create_task(
                 fetch_bioactivities_by_target(
                     chembl_id,
@@ -83,12 +80,6 @@ async def recon_async(
         else:
             chembl_task = None
 
-        if use_bindingdb:
-            bindingdb_task: asyncio.Task | None = tg.create_task(
-                fetch_bioactivities_by_uniprot(canonical_id, limit=max_bioactivities)
-            )
-        else:
-            bindingdb_task = None
         string_task = tg.create_task(fetch_interactions(canonical_id, limit=30))
 
     pdb_structures: list[PDBStructure] = pdb_task.result() or []
@@ -96,12 +87,11 @@ async def recon_async(
     chembl_activities: list[BioactivityRecord] = (
         chembl_task.result() if chembl_task else []
     ) or []
-    bindingdb_activities: list[BioactivityRecord] = (bindingdb_task.result() if bindingdb_task else []) or []
     from targetrecon.models import ProteinInteraction
     raw_interactions = string_task.result() or []
     interactions = [ProteinInteraction(**i) for i in raw_interactions]
 
-    all_bioactivities = chembl_activities + bindingdb_activities
+    all_bioactivities = chembl_activities
     if min_pchembl is not None:
         all_bioactivities = [
             r for r in all_bioactivities

@@ -483,7 +483,7 @@ function showWelcome(){
   msgs().innerHTML='<div class="chat-welcome">'
     +'<div class="chat-welcome-icon">&#129516;</div>'
     +'<strong>AI Drug Discovery Agent</strong>'
-    +'<div style="font-size:12px;margin-top:.2rem">UniProt &bull; PDB &bull; ChEMBL &bull; BindingDB &bull; STRING-DB</div>'
+    +'<div style="font-size:12px;margin-top:.2rem">UniProt &bull; PDB &bull; AlphaFold &bull; ChEMBL &bull; STRING-DB</div>'
     +'<div class="chat-welcome-suggestions">'
     +sug.map(function(s){return'<button class="chat-suggestion" onclick="chatUseSug(this)">'+esc(s)+'</button>';}).join('')
     +'</div></div>';
@@ -654,17 +654,11 @@ INDEX_HTML = """<!DOCTYPE html>
   <div class="sb-section">
     <span class="sb-label">Search</span>
     <form action="/recon" method="get" id="sbForm">
-      <div style="display:flex;justify-content:center;gap:1rem;margin-bottom:.4rem">
-        <label class="db-check"><input type="checkbox" id="cbChembl" checked onchange="document.getElementById('hUseChembl').value=this.checked?'1':'0'"> ChEMBL</label>
-        <label class="db-check"><input type="checkbox" id="cbBdb" checked onchange="document.getElementById('hUseBdb').value=this.checked?'1':'0'"> BindingDB</label>
-      </div>
       <input class="sb-input" name="q" id="sbQ" placeholder="EGFR · P00533 · BRAF"
              autofocus autocomplete="off" spellcheck="false">
       <input type="hidden" name="max_res" id="hMaxRes" value="4.0">
       <input type="hidden" name="min_pc"  id="hMinPc"  value="0">
       <input type="hidden" name="max_bio" id="hMaxBio" value="1000">
-      <input type="hidden" name="use_chembl" id="hUseChembl" value="1">
-      <input type="hidden" name="use_bindingdb" id="hUseBdb" value="1">
       <button type="submit" class="sb-btn sb-btn-primary" id="searchBtn" onclick="showSearchSpinner(this)">Search</button>
     </form>
     <a href="/sketcher" class="sb-btn sb-btn-outline"
@@ -711,7 +705,7 @@ INDEX_HTML = """<!DOCTYPE html>
     <div class="landing-logo">Target<span>Recon</span></div>
     <p class="landing-sub">
       Drug target intelligence in one search.<br>
-      Aggregates UniProt · PDB · AlphaFold · ChEMBL · BindingDB.
+      Aggregates UniProt · PDB · AlphaFold · ChEMBL · STRING-DB.
     </p>
     <div class="examples">
       {% for ex in ["EGFR","BRAF","CDK2","ABL1","JAK2","TP53"] %}
@@ -753,8 +747,6 @@ function _getParams(q) {
     max_res: document.getElementById('hMaxRes').value,
     min_pc:  document.getElementById('hMinPc').value,
     max_bio: document.getElementById('hMaxBio').value,
-    use_chembl:    document.getElementById('hUseChembl').value,
-    use_bindingdb: document.getElementById('hUseBdb').value,
   });
 }
 
@@ -883,8 +875,8 @@ LOADING_HTML = """<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="refresh" content="0;url=/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}">
-<script>(function(){var sid='';try{sid=sessionStorage.getItem('tr_session_id')||'';}catch(e){}var url='/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}&use_chembl={{ use_chembl }}&use_bindingdb={{ use_bindingdb }}'+(sid?'&sid='+encodeURIComponent(sid):'');window.location.replace(url);})();</script>
+<meta http-equiv="refresh" content="0;url=/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}">
+<script>(function(){var sid='';try{sid=sessionStorage.getItem('tr_session_id')||'';}catch(e){}var url='/recon/run?q={{ q }}&max_res={{ max_res }}&min_pc={{ min_pc }}&max_bio={{ max_bio }}'+(sid?'&sid='+encodeURIComponent(sid):'');window.location.replace(url);})();</script>
 <title>Searching {{ q }} — TargetRecon</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
@@ -930,7 +922,7 @@ body{display:flex;align-items:center;justify-content:center;flex-direction:colum
     <div class="search-label">Searching</div>
     <div class="search-query">{{ q }}</div>
   </div>
-  <div class="search-sources">UniProt &nbsp;·&nbsp; PDB &nbsp;·&nbsp; AlphaFold &nbsp;·&nbsp; ChEMBL &nbsp;·&nbsp; BindingDB</div>
+  <div class="search-sources">UniProt &nbsp;·&nbsp; PDB &nbsp;·&nbsp; AlphaFold &nbsp;·&nbsp; ChEMBL &nbsp;·&nbsp; STRING-DB</div>
 </body>
 </html>
 """
@@ -1093,18 +1085,12 @@ REPORT_HTML = r"""<!DOCTYPE html>
   <div class="sb-section">
     <span class="sb-label">Search</span>
     <form action="/recon" method="get" id="sbForm">
-      <div style="display:flex;justify-content:center;gap:1rem;margin-bottom:.4rem">
-        <label class="db-check"><input type="checkbox" id="cbChembl" {% if use_chembl %}checked{% endif %} onchange="document.getElementById('hUseChembl').value=this.checked?'1':'0'"> ChEMBL</label>
-        <label class="db-check"><input type="checkbox" id="cbBdb" {% if use_bindingdb %}checked{% endif %} onchange="document.getElementById('hUseBdb').value=this.checked?'1':'0'"> BindingDB</label>
-      </div>
       <input class="sb-input" name="q" id="sbQ" placeholder="EGFR · P00533 · BRAF"
              value="{{ query }}" autocomplete="off" spellcheck="false">
       <!-- Filters hidden in form -->
       <input type="hidden" name="max_res" id="hMaxRes" value="{{ max_res }}">
       <input type="hidden" name="min_pc"  id="hMinPc"  value="{{ min_pc }}">
       <input type="hidden" name="max_bio" id="hMaxBio" value="{{ max_bio }}">
-      <input type="hidden" name="use_chembl" id="hUseChembl" value="{{ '1' if use_chembl else '0' }}">
-      <input type="hidden" name="use_bindingdb" id="hUseBdb" value="{{ '1' if use_bindingdb else '0' }}">
       <button type="submit" class="sb-btn sb-btn-primary" onclick="showSearchSpinner(this)">Search</button>
     </form>
     <a href="/sketcher" class="sb-btn sb-btn-outline"
@@ -1442,7 +1428,6 @@ REPORT_HTML = r"""<!DOCTYPE html>
             <select id="ligSource" class="lig-filter-select" onchange="filterLigands()">
               <option value="">All sources</option>
               <option value="chembl">ChEMBL only</option>
-              <option value="bindingdb">BindingDB only</option>
             </select>
           </div>
           <div class="lig-filter-group">
@@ -1636,7 +1621,7 @@ REPORT_HTML = r"""<!DOCTYPE html>
   </div><!-- /tabs section -->
 
   <div style="text-align:center;font-size:11.5px;color:#30363d;margin-top:2rem;padding-top:1.5rem;border-top:1px solid #21262d">
-    TargetRecon v{{ version }} &nbsp;·&nbsp; UniProt · RCSB PDB · AlphaFold DB · ChEMBL · BindingDB
+    TargetRecon v{{ version }} &nbsp;·&nbsp; UniProt · RCSB PDB · AlphaFold DB · ChEMBL · STRING-DB
   </div>
 
 </div><!-- /main-content inner -->
@@ -2310,8 +2295,6 @@ function _getParams(q) {
     max_res: document.getElementById('hMaxRes').value,
     min_pc:  document.getElementById('hMinPc').value,
     max_bio: document.getElementById('hMaxBio').value,
-    use_chembl:    document.getElementById('hUseChembl').value,
-    use_bindingdb: document.getElementById('hUseBdb').value,
     sid:     window._sid||'',
   });
 }
@@ -2594,7 +2577,7 @@ def _max_bio_to_limit(max_bio: int):
 
 
 # ── Shared report render helper ───────────────────────────────────────────
-def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bindingdb=True, max_bio=1000):
+def _render_report(report, q, max_res=4.0, min_pc=0.0, max_bio=1000):
     u    = report.uniprot
     gene = (u.gene_name if u else None) or q
 
@@ -2639,8 +2622,6 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, use_chembl=True, use_bind
         max_res=max_res,
         min_pc=min_pc,
         max_bio=max_bio,
-        use_chembl=use_chembl,
-        use_bindingdb=use_bindingdb,
         interactions_json=json.dumps([i.model_dump() for i in report.interactions]),
         gene_json=json.dumps(gene),
         chat_panel=_CHAT_PANEL_HTML,
@@ -2801,13 +2782,9 @@ def recon_page():
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
     max_bio = int(request.args.get("max_bio", 1000))
-    use_chembl    = request.args.get("use_chembl", "1") == "1"
-    use_bindingdb = request.args.get("use_bindingdb", "1") == "1"
 
     return render_template_string(LOADING_HTML, q=q,
         max_res=max_res, min_pc=min_pc, max_bio=max_bio,
-        use_chembl="1" if use_chembl else "0",
-        use_bindingdb="1" if use_bindingdb else "0",
     )
 
 
@@ -2821,8 +2798,6 @@ def recon_run():
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
     max_bio = int(request.args.get("max_bio", 1000))
-    use_chembl    = request.args.get("use_chembl", "1") == "1"
-    use_bindingdb = request.args.get("use_bindingdb", "1") == "1"
 
     # If the query is a CHEMBL ID it could be a compound — disambiguate first
     from targetrecon.resolver import classify_query, QueryType
@@ -2836,8 +2811,7 @@ def recon_run():
     sid = request.args.get("sid", "").strip()
     cached = _session_reports(sid).get(q.upper())
     if cached:
-        return _render_report(cached, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
-                              use_chembl=use_chembl, use_bindingdb=use_bindingdb)
+        return _render_report(cached, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
     # Run recon
     from targetrecon.core import recon_async
@@ -2847,8 +2821,6 @@ def recon_run():
             max_pdb_resolution=max_res,
             max_bioactivities=_max_bio_to_limit(max_bio),
             min_pchembl=min_pc if min_pc > 0 else None,
-            use_chembl=use_chembl,
-            use_bindingdb=use_bindingdb,
             verbose=False,
         ))
     except Exception as exc:
@@ -2882,8 +2854,7 @@ def recon_run():
     # Cache report per-session for exports
     _session_reports(sid)[q.upper()] = report
 
-    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
-                          use_chembl=use_chembl, use_bindingdb=use_bindingdb)
+    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
 
 
 # ── Export routes ──────────────────────────────────────────────────────────
