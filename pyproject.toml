@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "targetrecon"
-version = "0.1.3"
+version = "0.1.4"
 description = "Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command."
 readme = "README.md"
 license = "MIT"
@@ -71,6 +71,9 @@ packages = ["src/targetrecon"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+targetrecon = ["static/**/*", "templates/**/*"]
 
 [tool.ruff]
 target-version = "py310"
