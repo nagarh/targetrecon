@@ -333,7 +333,17 @@ def serve(port: int, host: str, debug: bool) -> None:
                 urllib.request.urlretrieve(KETCHER_URL, tmp.name)
                 with zipfile.ZipFile(tmp.name) as zf:
                     ketcher2_dir.mkdir(parents=True, exist_ok=True)
-                    zf.extractall(ketcher2_dir)
+                    # ZIP extracts into standalone/ subdirectory — strip that level
+                    for member in zf.infolist():
+                        parts = member.filename.split("/", 1)
+                        if len(parts) < 2 or not parts[1]:
+                            continue
+                        dest = ketcher2_dir / parts[1]
+                        if member.is_dir():
+                            dest.mkdir(parents=True, exist_ok=True)
+                        else:
+                            dest.parent.mkdir(parents=True, exist_ok=True)
+                            dest.write_bytes(zf.read(member.filename))
             os.unlink(tmp.name)
             console.print("[green]Ketcher downloaded.[/green]")
         except Exception as e:

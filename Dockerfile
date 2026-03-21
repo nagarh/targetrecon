@@ -15,9 +15,10 @@ RUN STATIC_DIR=$(python -c "import targetrecon, os; print(os.path.join(os.path.d
     mkdir -p "$STATIC_DIR/ketcher2" && \
     curl -fL "https://github.com/epam/ketcher/releases/download/v3.12.0/ketcher-standalone-3.12.0.zip" \
          -o /tmp/ketcher2.zip && \
-    unzip -q /tmp/ketcher2.zip -d "$STATIC_DIR/ketcher2/" && \
-    rm /tmp/ketcher2.zip && \
-    echo "Ketcher installed at $STATIC_DIR/ketcher2"
+    unzip -q /tmp/ketcher2.zip -d /tmp/ketcher2_extracted/ && \
+    cp -r /tmp/ketcher2_extracted/standalone/. "$STATIC_DIR/ketcher2/" && \
+    rm -rf /tmp/ketcher2.zip /tmp/ketcher2_extracted && \
+    echo "Ketcher installed at $STATIC_DIR/ketcher2" && ls "$STATIC_DIR/ketcher2/index.html"
 
 EXPOSE 7860
 
