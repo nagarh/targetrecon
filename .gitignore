@@ -56,6 +56,6 @@ src/targetrecon/app.py
 targetrecon_html_report_preview.html
 test_cli/
 
-# Ketcher bundles (large, ~100MB — download separately, see README)
-src/targetrecon/static/ketcher/
-src/targetrecon/static/ketcher2/
+# Ketcher bundles (now tracked for HF Spaces deployment)
+# src/targetrecon/static/ketcher/
+# src/targetrecon/static/ketcher2/
