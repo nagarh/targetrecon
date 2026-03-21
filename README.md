@@ -27,7 +27,7 @@ Think of it as [`gget`](https://github.com/pachterlab/gget) for drug discovery �
 | Source | Data |
 |---|---|
 | **UniProt** | Function, subcellular location, GO terms, diseases, keywords |
-| **RCSB PDB** | Experimental structures filtered by resolution |
+| **RCSB PDB** | Up to 50 experimental structures, filtered by resolution (default ≤ 4.0 Å), sorted by resolution ascending |
 | **AlphaFold DB** | Predicted structure with pLDDT confidence coloring |
 | **ChEMBL** | Bioactivity data (IC50, Ki, Kd, EC50) sorted by pChEMBL descending |
 | **BindingDB** | Binding affinity measurements converted to pChEMBL, sorted by potency |
@@ -166,7 +166,7 @@ targetrecon CDK2 --no-chembl                      # BindingDB only
 |---|---|---|
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
 | `-o, --output PATH` | `.` | Output directory |
-| `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å |
+| `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å (up to 50 structures returned, sorted by resolution) |
 | `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Number of top ligands for SDF export |
@@ -198,7 +198,7 @@ targetrecon batch -i targets.txt --max-bioactivities all
 | `-i, --input PATH` | — | Text file, one target per line |
 | `-o, --output PATH` | `./batch_reports` | Output directory |
 | `-f, --format [json\|html\|sdf]` | `html json sdf` | Output formats (repeat for multiple) |
-| `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å |
+| `--max-resolution FLOAT` | `4.0` | Max PDB resolution in Å (up to 50 structures returned, sorted by resolution) |
 | `--max-bioactivities INT\|all` | `1000` | Max records **per DB** (ChEMBL + BindingDB separately); `all` = no limit |
 | `--min-pchembl FLOAT` | — | Minimum pChEMBL value filter |
 | `--top-ligands INT` | `20` | Ligands per SDF file |
