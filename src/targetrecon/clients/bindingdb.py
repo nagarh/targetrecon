@@ -48,6 +48,9 @@ async def fetch_bioactivities_by_uniprot(
         smiles = (
             aff.get("smile") or aff.get("smiles") or aff.get("SMILES") or ""
         ).strip()
+        # Strip BindingDB extended SMILES notation (|r,wU:...|) — RDKit doesn't need it
+        if " |" in smiles:
+            smiles = smiles[:smiles.index(" |")]
         if not smiles:
             continue
 

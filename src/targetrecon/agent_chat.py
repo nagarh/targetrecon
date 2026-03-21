@@ -92,7 +92,8 @@ TOOL_DEFS = [
                     "description": "Maximum PDB resolution in Angstroms (default 4.0). Optional."
                 },
                 "use_chembl": {"type": "boolean", "description": "Include ChEMBL bioactivities (default true)"},
-                "use_bindingdb": {"type": "boolean", "description": "Include BindingDB bioactivities (default true)"}
+                "use_bindingdb": {"type": "boolean", "description": "Include BindingDB bioactivities (default true)"},
+                "max_bioactivities": {"type": "integer", "description": "Max bioactivity records per database (default 1000, null = unlimited)"}
             },
             "required": ["query"]
         }
@@ -290,14 +291,13 @@ TOOL_DEFS = [
         "description": (
             "Write and execute an arbitrary Python script for custom cheminformatics, statistics, "
             "or data analysis on the cached target data. "
-            "The script runs in a subprocess with a timeout. "
-            "Pre-injected variables: `ligands` (list of dicts with keys: smiles, name, chembl_id, "
-            "pchembl, activity_type, value_nM, num_assays, sources), "
-            "`bioactivities` (list of dicts with keys: smiles, name, source, activity_type, value, pchembl_value), "
-            "`target` (str, gene name). "
-            "Available packages: rdkit, pandas, numpy, scipy, math, json, collections, itertools. "
-            "Print results to stdout — that is what gets returned. "
-            "Use this for any custom analysis not covered by other tools."
+            "Pre-injected variables available in the script: "
+            "`target` (str), "
+            "`ligands` (list of dicts, each with: smiles, name, chembl_id, pchembl, activity_type, value_nM, num_assays, sources — NO pre-computed properties; use RDKit to compute mw/logp/tpsa/etc from smiles), "
+            "`bioactivities` (list of dicts, each with: smiles, name, source, activity_type, value, pchembl_value). "
+            "Available packages: rdkit (Chem, Descriptors, rdMolDescriptors, AllChem, MurckoScaffold), pandas, numpy, scipy, matplotlib (Agg backend already set — use plt.savefig not plt.show). "
+            "Files from previous scripts in this session are available in the working directory — use list_session_files to see them. "
+            "Always print results to stdout. For plots: save as PNG with a bare filename, always call plt.tight_layout() before savefig, use large enough figsize for heatmaps (e.g. figsize=(10,8)), rotate x-axis tick labels on heatmaps (rotation=45, ha='right') to prevent overlap. Never mention the image URL in your response."
         ),
         "input_schema": {
             "type": "object",
@@ -307,6 +307,15 @@ TOOL_DEFS = [
                 "description": {"type": "string", "description": "One-line description of what this script does"},
             },
             "required": ["query", "script", "description"]
+        }
+    },
+    {
+        "name": "list_session_files",
+        "description": "List all files created during this session (plots, CSVs, SDFs, etc.) with their sizes. Use this to see what files are available for further analysis.",
+        "input_schema": {
+            "type": "object",
+            "properties": {},
+            "required": []
         }
     },
 ]
@@ -324,12 +333,13 @@ TOOL_DISPLAY = {
     "compute_properties": "Computing drug-likeness properties (RDKit)",
     "similarity_search": "Running similarity search (Morgan/Tanimoto)",
     "run_python": "Executing Python script",
+    "list_session_files": "Listing session files",
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a specialized AI assistant embedded in TargetRecon, a drug-target intelligence platform used by medicinal chemists and drug discovery scientists.
 
-You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, BindingDB, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). Always use tools to fetch live data rather than relying solely on training knowledge.
+You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, BindingDB, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). ALWAYS use tools to get data — never generate, estimate, or recall numbers, properties, structures, or analysis results from your training knowledge. Every number in your response must come from a tool result.
 
 Guidelines:
 - Use **bold** for gene names, `code` for IDs (UniProt, PDB, ChEMBL), and tables for comparisons
@@ -339,7 +349,12 @@ Guidelines:
 - If a user asks about a target not yet searched, proactively run search_target
 - For scaffold questions, always run analyze_scaffolds — never guess from SMILES alone
 - For drug-likeness questions, always run compute_properties — give Ro5 pass/fail counts
-- For any custom analysis not covered by other tools (custom RDKit, statistics, plots as text), use run_python — write a complete script and print results to stdout
+- NEVER generate, guess, recall, or invent any numbers — not pChEMBL values, not MW, not LogP, not counts, not percentages, not Tanimoto scores, nothing. Every single number must come directly from a tool result or run_python output.
+- When asked about files, counts of ligands in files, or what data is available — use list_session_files to check, then run_python to read/analyze them if needed.
+- NEVER compute or estimate molecular properties (MW, LogP, TPSA, QED, fingerprints, Tanimoto, aromatic fraction, rotatable bonds, HBD, HBA, etc.) from your own knowledge — always use run_python with RDKit to compute them from the SMILES in the tool results.
+- For plots, correlations, custom statistics, fingerprint clustering, similarity matrices, or any analysis not covered by other tools — silently call run_python without telling the user; never ask them to run a script themselves
+- When creating plots, always save as PNG using a bare filename (e.g. plt.savefig('plot.png')) — NEVER use /mnt/data/ or any absolute path. Do NOT reference or mention the image URL in your response — the plot will appear as a button automatically. Always call plt.tight_layout() before savefig. For heatmaps use a large enough figure (e.g. figsize=(10,8)) and rotate x-axis labels (plt.xticks(rotation=45, ha='right')) to prevent label overlap.
+- If run_python returns an error, fix the script and call run_python again immediately — never tell the user there was an error, just fix and retry silently
 - Be concise but scientifically rigorous; use bullet points for findings
 - Suggest follow-up analyses the user might not have considered
 
@@ -356,6 +371,7 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
     max_res = float(inputs.get("max_pdb_resolution", 4.0))
     use_chembl = inputs.get("use_chembl", True)
     use_bindingdb = inputs.get("use_bindingdb", True)
+    max_bioactivities = inputs.get("max_bioactivities", 1000)
 
     report = await recon_async(
         query,
@@ -363,6 +379,7 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
         min_pchembl=min_pchembl if min_pchembl else None,
         use_chembl=use_chembl,
         use_bindingdb=use_bindingdb,
+        max_bioactivities=max_bioactivities,
         verbose=False,
     )
 
@@ -398,7 +415,7 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
         "subcellular_locations": u.subcellular_locations[:3],
         "function_snippet": (u.function_description or "")[:300],
         "_action_links": [
-            {"label": "View full report", "href": f"/recon/run?q={query}", "external": False},
+            {"label": "View full report", "href": f"/recon/run?q={query}", "external": False, "report": True},
         ]
     }
     return result
@@ -975,9 +992,15 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
 
     gene = (report.uniprot.gene_name if report.uniprot else None) or query
 
+    def _clean_smiles(smi: str) -> str:
+        """Strip BindingDB extended SMILES notation (|...|) — RDKit doesn't need it."""
+        if smi and " |" in smi:
+            smi = smi[:smi.index(" |")]
+        return smi or ""
+
     ligands_data = [
         {
-            "smiles": l.smiles, "name": l.name, "chembl_id": l.chembl_id,
+            "smiles": _clean_smiles(l.smiles or ""), "name": l.name, "chembl_id": l.chembl_id,
             "pchembl": l.best_pchembl, "activity_type": l.best_activity_type,
             "value_nM": l.best_activity_value_nM, "num_assays": l.num_assays,
             "sources": l.sources,
@@ -1004,15 +1027,18 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
         "    from rdkit.Chem.Scaffolds import MurckoScaffold\n"
         "except ImportError: pass\n"
         f"target = {gene!r}\n"
-        f"ligands = {json.dumps(ligands_data)}\n"
-        f"bioactivities = {json.dumps(bio_data)}\n"
+        f"ligands = json.loads({json.dumps(json.dumps(ligands_data))})\n"
+        f"bioactivities = json.loads({json.dumps(json.dumps(bio_data))})\n"
         "# ── user script ──\n"
     )
     full_script = prelude + textwrap.dedent(script)
 
     try:
+        # Write to a temp file — more reliable than -c for large injected data
+        script_file = workdir / "_tr_script.py"
+        script_file.write_text(full_script, encoding="utf-8")
         proc = subprocess.run(
-            [sys.executable, "-c", full_script],
+            [sys.executable, str(script_file)],
             capture_output=True, text=True, timeout=_EXEC_TIMEOUT,
             cwd=str(workdir),
         )
@@ -1027,9 +1053,15 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
         result: dict = {"description": description, "success": success}
         if stdout:
             result["output"] = stdout[:4000]
-        if stderr:
-            result["stderr"] = stderr[:1000]
-        if not stdout and not stderr and not new_files:
+        if stderr and not success:
+            # Only surface stderr as error when script actually failed
+            result["error"] = stderr[:1500]
+        elif stderr:
+            # Script succeeded but had warnings — log quietly, don't mark as failure
+            result["warnings"] = stderr[:500]
+        if not success and not stderr:
+            result["error"] = f"Script exited with code {proc.returncode} — no output or error captured."
+        if not stdout and not stderr and not new_files and success:
             result["output"] = "(no output — add print() statements to see results)"
 
         # Build action links for new files
@@ -1040,17 +1072,13 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
             url = f"/agent/files/{sid}/{f.name}" if sid else f"/agent/files/tmp/{f.name}"
             if ext in _IMAGE_EXTS:
                 action_links.append({"label": f"View {f.name}", "href": url, "external": False, "is_image": True})
+                action_links.append({"label": f"⬇ Download {f.name}", "href": url, "external": False})
                 image_urls.append(url)
             elif ext in _DATA_EXTS:
                 action_links.append({"label": f"Download {f.name}", "href": url, "external": False})
 
-        # Tell the LLM about images so it can reference them inline
         if image_urls:
-            result["images"] = image_urls
-            result["image_note"] = (
-                "Images were saved. Reference them in your response using markdown: "
-                + "  ".join(f"![{Path(u).name}]({u})" for u in image_urls)
-            )
+            result["images_saved"] = [Path(u).name for u in image_urls]
 
         result["_action_links"] = action_links
         return result
@@ -1059,6 +1087,28 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
         return {"error": f"Script timed out after {_EXEC_TIMEOUT}s. Simplify or reduce data size."}
     except Exception as exc:
         return {"error": f"Execution error: {exc}"}
+
+
+async def _tool_list_session_files(inputs: dict, report_cache: dict) -> dict:
+    sid = inputs.get("__sid__", "")
+    if not sid:
+        return {"files": [], "note": "No session workdir available."}
+    workdir = get_session_workdir(sid)
+    files = []
+    action_links = []
+    for f in sorted(workdir.iterdir(), key=lambda x: x.name):
+        if f.name.startswith("_tr_script"):
+            continue
+        size_kb = round(f.stat().st_size / 1024, 1)
+        url = f"/agent/files/{sid}/{f.name}"
+        files.append({"name": f.name, "size_kb": size_kb, "url": url})
+        ext = f.suffix.lower()
+        if ext in _IMAGE_EXTS:
+            action_links.append({"label": f"View {f.name}", "href": url, "external": False, "is_image": True})
+            action_links.append({"label": f"⬇ Download {f.name}", "href": url, "external": False})
+        elif ext in _DATA_EXTS:
+            action_links.append({"label": f"⬇ Download {f.name}", "href": url, "external": False})
+    return {"files": files, "total": len(files), "_action_links": action_links}
 
 
 TOOL_REGISTRY = {
@@ -1074,6 +1124,7 @@ TOOL_REGISTRY = {
     "compute_properties": _tool_compute_properties,
     "similarity_search": _tool_similarity_search,
     "run_python": _tool_run_python,
+    "list_session_files": _tool_list_session_files,
 }
 
 

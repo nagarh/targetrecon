@@ -53,6 +53,7 @@ batch_reports/
 resume.txt
 CLAUDE_CODE_HANDOFF.md
 cli.py
+src/targetrecon/app.py
 targetrecon_html_report_preview.html
 test_cli/
 

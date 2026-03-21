@@ -17,6 +17,10 @@ app = Flask(
 )
 app.secret_key = os.urandom(24)
 
+# Unique ID generated once at startup — clients use it to detect server restarts
+import uuid as _boot_uuid
+_BOOT_ID = str(_boot_uuid.uuid4())
+
 # ── AI Agent Chat Panel (injected into both INDEX_HTML and REPORT_HTML) ──────
 _CHAT_PANEL_HTML = r"""
 <!-- marked.js optional enhancement; built-in renderer used as fallback -->
@@ -26,6 +30,17 @@ _CHAT_PANEL_HTML = r"""
 <button id="chatToggleBtn" onclick="toggleChat()" style="position:fixed;bottom:1.4rem;right:1.4rem;z-index:9999;padding:.6rem 1.1rem;font-size:13px;font-weight:600;border-radius:50px;box-shadow:0 4px 20px rgba(31,111,235,.5)">
   <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:.35rem"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>AI Agent
 </button>
+
+<!-- Report overlay panel (iframe — keeps chat JS state alive) -->
+<div id="reportOverlay" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.6);backdrop-filter:blur(2px)">
+  <div style="position:absolute;inset:2rem;background:#0d1117;border:1px solid #30363d;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:.6rem 1rem;border-bottom:1px solid #30363d;flex-shrink:0">
+      <span style="font-size:13px;font-weight:600;color:#e6edf3">Full Report</span>
+      <button onclick="closeReport()" style="background:none;border:1px solid #30363d;border-radius:5px;color:#8b949e;font-size:13px;padding:.2rem .7rem;cursor:pointer">&#10005; Close</button>
+    </div>
+    <iframe id="reportFrame" src="" style="flex:1;border:none;width:100%;background:#0d1117"></iframe>
+  </div>
+</div>
 
 <!-- AI Agent Chat Panel -->
 <div id="agentChatPanel" class="chat-hidden">
@@ -111,15 +126,27 @@ var _cid='c'+Math.random().toString(36).slice(2,7);
 var _ctx=window.RECON_QUERY||null;
 var _open=false,_busy=false,_minimized=false,_curDiv=null,_curTxt='',_cards={},_partial='',_xhr=null;
 var _prov='anthropic',_model='claude-sonnet-4-6',_apiKey='';
-// ── Per-user session ID ────────────────────────────────────────────────
+// ── Boot ID check — wipe session state if server was restarted ────────
 (function(){
-  window._sid=sessionStorage.getItem('tr_session_id')||'';
-  if(!window._sid){
-    window._sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
-      var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);
-    });
-    sessionStorage.setItem('tr_session_id',window._sid);
-  }
+  fetch('/api/boot_id').then(function(r){return r.json();}).then(function(d){
+    var storedBoot=sessionStorage.getItem('tr_boot_id');
+    if(storedBoot && storedBoot!==d.boot_id){
+      // Server restarted — clear all session state
+      sessionStorage.clear();
+    }
+    sessionStorage.setItem('tr_boot_id',d.boot_id);
+    // Now init session ID
+    window._sid=sessionStorage.getItem('tr_session_id')||'';
+    if(!window._sid){
+      window._sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+        var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);
+      });
+      sessionStorage.setItem('tr_session_id',window._sid);
+    }
+  }).catch(function(){
+    // Server unreachable — still init sid from storage
+    window._sid=sessionStorage.getItem('tr_session_id')||'';
+  });
 })();
 
 /* Built-in markdown renderer — handles headers, bold, italic, code, tables, lists */
@@ -129,6 +156,7 @@ function _inl(t){
   t=t.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>');
   t=t.replace(/\*(.+?)\*/g,'<em>$1</em>');
   t=t.replace(/`([^`\n]+)`/g,'<code>$1</code>');
+  t=t.replace(/!\[([^\]]*)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
   t=t.replace(/\[([^\]]+)\]\(([^)]+)\)/g,'<a href="$2" target="_blank">$1</a>');
   return t;
 }
@@ -405,6 +433,17 @@ window.chatMinimize=function(){
 })();
 
 // ── Chat ──────────────────────────────────────────────────────────────────
+window.openReport=function(url){
+  var o=$id('reportOverlay'),f=$id('reportFrame');
+  if(!o||!f)return;
+  f.src=url;
+  o.style.display='block';
+};
+window.closeReport=function(){
+  var o=$id('reportOverlay'),f=$id('reportFrame');
+  if(o)o.style.display='none';
+  if(f)f.src='';
+};
 window.toggleChat=function(){
   var p=$id('agentChatPanel'),b=$id('chatToggleBtn');
   /* If panel is minimized, restore it */
@@ -485,8 +524,9 @@ function doneToolCard(tid,elapsed,err,links){
     var ld=document.createElement('div');ld.className='chat-action-links';
     links.forEach(function(lk){
       var a=document.createElement('a');a.className='chat-action-link';a.textContent=lk.label;
-      if(lk.external){a.href=lk.href;a.target='_blank';}
-      else{a.href='#';(function(h){a.onclick=function(e){e.preventDefault();fetch(h).then(function(r){return r.text();}).then(function(html){if(window.navTo)window.navTo(html);else{document.open();document.write(html);document.close();}});};})(lk.href);}
+      if(lk.report){a.href='#';a.onclick=function(e){e.preventDefault();openReport(lk.href);};}
+      else if(lk.is_image){a.href=lk.href;a.target='_blank';}
+      else{(function(href,label){a.href='#';a.onclick=function(e){e.preventDefault();var tmp=document.createElement('a');tmp.href=href;tmp.download=label;document.body.appendChild(tmp);tmp.click();document.body.removeChild(tmp);};})(lk.href,lk.label);}
       ld.appendChild(a);
     });
     msgs().appendChild(ld);
@@ -1468,10 +1508,16 @@ REPORT_HTML = r"""<!DOCTYPE html>
           </td>
           <td class="c" style="color:#b1bac4">{{ lig.num_assays }}</td>
           <td>{% for s in lig.sources %}<span class="tag tag-green" style="font-size:10.5px">{{ s }}</span>{% endfor %}</td>
-          <td class="mono smiles-cell" style="font-size:10.5px;color:#58a6ff;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:default"
+          <td class="mono smiles-cell" style="font-size:10.5px;color:#58a6ff;max-width:220px;cursor:pointer"
               data-smiles="{{ lig.smiles }}"
               data-smiles-label="{{ lig.name or lig.chembl_id or '' }}"
-              title="Hover to preview structure">{{ lig.smiles[:45] }}{% if lig.smiles|length > 45 %}…{% endif %}</td>
+              data-expanded="0"
+              title="Click to expand • Hover to preview structure"
+              onclick="toggleSmiles(this)">
+            <span class="smiles-short" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:block">{{ lig.smiles[:45] }}{% if lig.smiles|length > 45 %}…{% endif %}</span>
+            <span class="smiles-full" style="display:none;white-space:pre-wrap;word-break:break-all">{{ lig.smiles }}</span>
+            <span class="smiles-copy" style="display:none;font-size:10px;color:#8b949e;margin-left:4px" onclick="event.stopPropagation();navigator.clipboard.writeText('{{ lig.smiles }}')">📋 copy</span>
+          </td>
         </tr>
         {% endfor %}
         </tbody>
@@ -2202,6 +2248,13 @@ function downloadSDF() {
   window.location.href = '/export/sdf?' + params.toString();
 }
 
+function toggleSmiles(td) {
+  var expanded = td.getAttribute('data-expanded') === '1';
+  td.querySelector('.smiles-short').style.display = expanded ? 'block' : 'none';
+  td.querySelector('.smiles-full').style.display  = expanded ? 'none'  : 'block';
+  td.querySelector('.smiles-copy').style.display  = expanded ? 'none'  : 'inline';
+  td.setAttribute('data-expanded', expanded ? '0' : '1');
+}
 function togglePdbRows() {
   var extras = document.querySelectorAll('.pdb-extra');
   var btn = document.getElementById('pdbExpandBtn');
@@ -2282,8 +2335,14 @@ function showSearchOverlay(q) { _doSearch(q); }
 <script>window.RECON_QUERY = {{ query_json | safe }};</script>
 <script>
 (function(){
-  var sid='';try{sid=window._sid||sessionStorage.getItem('tr_session_id')||'';}catch(e){}
-  if(sid){document.querySelectorAll('a[href^="/export/"]').forEach(function(a){a.href+='&sid='+encodeURIComponent(sid);});}
+  var sid='';
+  try{
+    var urlSid=new URLSearchParams(window.location.search).get('sid')||'';
+    sid=urlSid||window._sid||sessionStorage.getItem('tr_session_id')||'';
+  }catch(e){}
+  if(sid){document.querySelectorAll('a[href^="/export/"]').forEach(function(a){
+    if(a.href.indexOf('sid=')===-1)a.href+=(a.href.indexOf('?')===-1?'?':'&')+'sid='+encodeURIComponent(sid);
+  });}
 })();
 </script>
 {{ chat_panel | safe }}
@@ -2770,6 +2829,13 @@ def recon_run():
             max_res=max_res, min_pc=min_pc, max_bio=max_bio,
         ))
 
+    # Check session cache first (agent may have already run this query)
+    sid = request.args.get("sid", "").strip()
+    cached = _session_reports(sid).get(q.upper())
+    if cached:
+        return _render_report(cached, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
+                              use_chembl=use_chembl, use_bindingdb=use_bindingdb)
+
     # Run recon
     from targetrecon.core import recon_async
     try:
@@ -2811,7 +2877,6 @@ def recon_run():
 </div></body></html>""", q=q), 404
 
     # Cache report per-session for exports
-    sid = request.args.get("sid", "").strip()
     _session_reports(sid)[q.upper()] = report
 
     return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio,
@@ -2856,6 +2921,11 @@ def _start_session_cleanup() -> None:
 
 
 _start_session_cleanup()
+
+
+@app.route("/api/boot_id")
+def boot_id():
+    return jsonify({"boot_id": _BOOT_ID})
 
 
 @app.route("/api/session", methods=["POST"])
@@ -2928,10 +2998,16 @@ def search_smiles():
             resp.raise_for_status()
             molecules = resp.json().get("molecules", [])
             for m in molecules:
+                raw_sim = m.get("similarity")
+                # ChEMBL returns similarity on 0-100 scale (sometimes as string); normalise to 0-1
+                try:
+                    sim = float(raw_sim) / 100.0 if raw_sim is not None else None
+                except (TypeError, ValueError):
+                    sim = None
                 hits.append({
                     "chembl_id": m.get("molecule_chembl_id"),
                     "name": m.get("pref_name"),
-                    "similarity": m.get("similarity"),
+                    "similarity": sim,
                 })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
@@ -3155,7 +3231,10 @@ def agent_file(sid: str, filename: str):
     filepath = workdir / filename
     if not filepath.exists():
         return "File not found", 404
-    return send_from_directory(str(workdir), filename)
+    ext = Path(filename).suffix.lower()
+    image_exts = {".png", ".jpg", ".jpeg", ".svg", ".gif", ".webp"}
+    as_attachment = ext not in image_exts
+    return send_from_directory(str(workdir), filename, as_attachment=as_attachment)
 
 
 # ── Jinja filter ──────────────────────────────────────────────────────────
