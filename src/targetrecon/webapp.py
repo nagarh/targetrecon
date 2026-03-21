@@ -137,17 +137,23 @@ var _prov='anthropic',_model='claude-sonnet-4-6',_apiKey='';
       sessionStorage.clear();
     }
     sessionStorage.setItem('tr_boot_id',d.boot_id);
-    // Now init session ID
-    window._sid=sessionStorage.getItem('tr_session_id')||'';
-    if(!window._sid){
-      window._sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
-        var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);
-      });
-      sessionStorage.setItem('tr_session_id',window._sid);
+    // If the page already has a server-assigned sid (report page), use it and sync to sessionStorage
+    if(window._serverSid){
+      window._sid=window._serverSid;
+      sessionStorage.setItem('tr_session_id',window._serverSid);
+    } else {
+      // Now init session ID
+      window._sid=sessionStorage.getItem('tr_session_id')||'';
+      if(!window._sid){
+        window._sid='xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,function(c){
+          var r=Math.random()*16|0,v=c=='x'?r:(r&0x3|0x8);return v.toString(16);
+        });
+        sessionStorage.setItem('tr_session_id',window._sid);
+      }
     }
   }).catch(function(){
     // Server unreachable — still init sid from storage
-    window._sid=sessionStorage.getItem('tr_session_id')||'';
+    if(!window._serverSid) window._sid=sessionStorage.getItem('tr_session_id')||'';
   });
 })();
 
@@ -1068,9 +1074,9 @@ REPORT_HTML = r"""<!DOCTYPE html>
       </form>
     </div>
     <div class="topnav-actions">
-      <a href="/export/json?q={{ query }}" class="btn btn-default">⬇ JSON</a>
-      <a href="/export/html?q={{ query }}" class="btn btn-default">⬇ HTML</a>
-      {% if has_sdf %}<a href="/export/sdf?q={{ query }}" class="btn btn-default">⬇ SDF</a>{% endif %}
+      <a href="/export/json?q={{ query }}&sid={{ sid }}" class="btn btn-default">⬇ JSON</a>
+      <a href="/export/html?q={{ query }}&sid={{ sid }}" class="btn btn-default">⬇ HTML</a>
+      {% if has_sdf %}<a href="/export/sdf?q={{ query }}&sid={{ sid }}" class="btn btn-default">⬇ SDF</a>{% endif %}
     </div>
   </div>
 </nav>
@@ -1158,10 +1164,10 @@ REPORT_HTML = r"""<!DOCTYPE html>
   <!-- Export -->
   <div class="sb-section">
     <span class="sb-label">Export</span>
-    <a href="/export/json?q={{ query }}" class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ JSON data</a>
-    <a href="/export/html?q={{ query }}" class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ HTML report</a>
+    <a href="/export/json?q={{ query }}&sid={{ sid }}" class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ JSON data</a>
+    <a href="/export/html?q={{ query }}&sid={{ sid }}" class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ HTML report</a>
     {% if has_sdf %}
-    <a href="/export/sdf?q={{ query }}"  class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ SDF ligands</a>
+    <a href="/export/sdf?q={{ query }}&sid={{ sid }}"  class="sb-btn sb-btn-outline" style="text-align:center;display:block;text-decoration:none">⬇ SDF ligands</a>
     {% endif %}
   </div>
 
@@ -1636,6 +1642,8 @@ var AF_URL = {{ af_url_json | safe }};
 var QUERY = {{ query_json | safe }};
 var INTERACTIONS = {{ interactions_json | safe }};
 var GENE = {{ gene_json | safe }};
+window._serverSid = '{{ sid }}';
+window._sid = '{{ sid }}';
 </script>
 
 <!-- ── JS ── -->
@@ -2577,7 +2585,7 @@ def _max_bio_to_limit(max_bio: int):
 
 
 # ── Shared report render helper ───────────────────────────────────────────
-def _render_report(report, q, max_res=4.0, min_pc=0.0, max_bio=1000):
+def _render_report(report, q, max_res=4.0, min_pc=0.0, max_bio=1000, sid=""):
     u    = report.uniprot
     gene = (u.gene_name if u else None) or q
 
@@ -2604,7 +2612,7 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, max_bio=1000):
             atype_counts[r.activity_type] = atype_counts.get(r.activity_type, 0) + 1
     atype_top = dict(sorted(atype_counts.items(), key=lambda x: -x[1])[:5])
 
-    return render_template_string(
+    html = render_template_string(
         REPORT_HTML,
         report=report,
         u=u,
@@ -2626,7 +2634,12 @@ def _render_report(report, q, max_res=4.0, min_pc=0.0, max_bio=1000):
         gene_json=json.dumps(gene),
         chat_panel=_CHAT_PANEL_HTML,
         version=_version,
+        sid=sid,
     )
+    from flask import make_response
+    resp = make_response(html)
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -2681,7 +2694,7 @@ def disambiguate_run():
                 return f"<html><body><p>Error: {exc}</p></body></html>", 500
             sid = request.args.get("sid", "").strip()
             _session_reports(sid)[q.upper()] = report
-            return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
+            return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio, sid=sid)
 
         # It's a compound — show target selection table
         targets = asyncio.run(fetch_compound_targets(q, limit=20))
@@ -2710,7 +2723,7 @@ def disambiguate_run():
         return f"<html><body><p>Error: {exc}</p></body></html>", 500
     sid = request.args.get("sid", "").strip()
     _session_reports(sid)[q.upper()] = report
-    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
+    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio, sid=sid)
 
 
 @app.route("/disambiguate")
@@ -2809,9 +2822,12 @@ def recon_run():
 
     # Check session cache first (agent may have already run this query)
     sid = request.args.get("sid", "").strip()
+    if not sid:
+        import uuid as _uuid
+        sid = str(_uuid.uuid4())
     cached = _session_reports(sid).get(q.upper())
     if cached:
-        return _render_report(cached, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
+        return _render_report(cached, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio, sid=sid)
 
     # Run recon
     from targetrecon.core import recon_async
@@ -2854,7 +2870,7 @@ def recon_run():
     # Cache report per-session for exports
     _session_reports(sid)[q.upper()] = report
 
-    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio)
+    return _render_report(report, q, max_res=max_res, min_pc=min_pc, max_bio=max_bio, sid=sid)
 
 
 # ── Export routes ──────────────────────────────────────────────────────────
