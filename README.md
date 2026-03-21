@@ -72,7 +72,7 @@ This makes ChEMBL and BindingDB values directly comparable on the same scale.
 ### Full pipeline — what happens when you run a query
 
 ```
-1. Resolve query → UniProt ID + ChEMBL target ID
+1. Resolve query → UniProt ID / ChEMBL target ID
          │
          ▼
 2. Fetch in parallel (async):
