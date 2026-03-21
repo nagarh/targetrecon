@@ -148,7 +148,6 @@ targetrecon P00533 -f html -f json -f sdf -o ./reports/
 targetrecon BRAF --min-pchembl 7.0 --max-resolution 2.5
 targetrecon CDK2 --max-bioactivities 5000         # up to 5000 records
 targetrecon CDK2 --max-bioactivities all          # no limit
-targetrecon CDK2 --no-chembl                      # skip ChEMBL bioactivity data
 ```
 
 | Option | Default | Description |
