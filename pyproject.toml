@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "targetrecon"
-version = "0.1.6"
+version = "0.1.7"
 description = "Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command."
 readme = "README.md"
 license = "MIT"

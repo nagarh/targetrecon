@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/python-≥3.10-blue?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
-  <img src="https://img.shields.io/badge/version-0.1.6-orange" alt="Version">
+  <img src="https://img.shields.io/badge/version-0.1.7-orange" alt="Version">
   <img src="https://img.shields.io/badge/databases-5-purple" alt="Databases">
   <img src="https://img.shields.io/pypi/v/targetrecon?color=blue" alt="PyPI">
 </p>
