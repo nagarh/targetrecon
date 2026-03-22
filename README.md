@@ -14,12 +14,16 @@ pinned: false
   <img src="https://img.shields.io/badge/version-0.1.12-orange" alt="Version">
   <img src="https://img.shields.io/badge/databases-4-purple" alt="Databases">
   <img src="https://img.shields.io/pypi/v/targetrecon?color=blue" alt="PyPI">
+  <a href="https://huggingface.co/spaces/hemantn/targetrecon"><img src="https://img.shields.io/badge/🤗%20HuggingFace-Spaces-yellow" alt="HuggingFace Spaces"></a>
 </p>
 
 <h1 align="center">TargetRecon</h1>
 <p align="center"><b>Drug target intelligence aggregator — fetch, collate, and visualize public data for any protein target in one command.</b></p>
 <p align="center">
   Aggregate UniProt · PDB · AlphaFold · ChEMBL · STRING-DB into a single interactive report — in seconds.
+</p>
+<p align="center">
+  🚀 <strong><a href="https://huggingface.co/spaces/hemantn/targetrecon">Try it live on HuggingFace Spaces</a></strong>
 </p>
 
 ---
