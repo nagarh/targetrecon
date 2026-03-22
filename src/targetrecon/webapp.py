@@ -3236,7 +3236,41 @@ def format_int(val):
         return str(val)
 
 
+def _ensure_ketcher() -> None:
+    """Download Ketcher standalone if not already present (one-time, ~15MB)."""
+    ketcher2_dir = Path(__file__).parent / "static" / "ketcher2"
+    if (ketcher2_dir / "index.html").exists():
+        return
+    import tempfile
+    import urllib.request
+    import zipfile
+
+    KETCHER_URL = "https://github.com/epam/ketcher/releases/download/v3.12.0/ketcher-standalone-3.12.0.zip"
+    print("[targetrecon] Downloading Ketcher structure editor (one-time, ~15MB)...", flush=True)
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
+            urllib.request.urlretrieve(KETCHER_URL, tmp.name)
+            with zipfile.ZipFile(tmp.name) as zf:
+                ketcher2_dir.mkdir(parents=True, exist_ok=True)
+                for member in zf.infolist():
+                    parts = member.filename.split("/", 1)
+                    if len(parts) < 2 or not parts[1]:
+                        continue
+                    dest = ketcher2_dir / parts[1]
+                    if member.is_dir():
+                        dest.mkdir(parents=True, exist_ok=True)
+                    else:
+                        dest.parent.mkdir(parents=True, exist_ok=True)
+                        dest.write_bytes(zf.read(member.filename))
+        import os as _os
+        _os.unlink(tmp.name)
+        print("[targetrecon] Ketcher downloaded successfully.", flush=True)
+    except Exception as e:
+        print(f"[targetrecon] Warning: Could not download Ketcher ({e}). Draw Structure will be unavailable.", flush=True)
+
+
 def run(host="0.0.0.0", port=5000, debug=False):
+    _ensure_ketcher()
     app.run(host=host, port=port, debug=debug, threaded=True)
 
 

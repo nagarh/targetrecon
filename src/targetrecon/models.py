@@ -100,7 +100,7 @@ class ProteinInteraction(BaseModel):
 class TargetReport(BaseModel):
     query: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
-    targetrecon_version: str = "0.1.9"
+    targetrecon_version: str = "0.1.10"
     uniprot: Optional[UniProtInfo] = None
     pdb_structures: list[PDBStructure] = Field(default_factory=list)
     alphafold: Optional[AlphaFoldModel] = None

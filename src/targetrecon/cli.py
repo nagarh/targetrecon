@@ -313,41 +313,8 @@ def serve(port: int, host: str, debug: bool) -> None:
       targetrecon serve --port 8080
     """
     from rich.console import Console
-    from pathlib import Path
     console = Console(stderr=True)
     console.print(f"[cyan]TargetRecon web app → http://localhost:{port}[/cyan]")
-
-    # Auto-download Ketcher if missing (required for Draw Structure feature)
-    import importlib.resources as _ir
-    try:
-        static_dir = Path(_ir.files("targetrecon") / "static")  # type: ignore[arg-type]
-    except Exception:
-        static_dir = Path(__file__).parent / "static"
-    ketcher2_dir = static_dir / "ketcher2"
-    if not (ketcher2_dir / "index.html").exists():
-        import urllib.request, zipfile, tempfile, os
-        KETCHER_URL = "https://github.com/epam/ketcher/releases/download/v3.12.0/ketcher-standalone-3.12.0.zip"
-        console.print("[dim]Downloading Ketcher structure editor (one-time, ~15MB)...[/dim]")
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".zip", delete=False) as tmp:
-                urllib.request.urlretrieve(KETCHER_URL, tmp.name)
-                with zipfile.ZipFile(tmp.name) as zf:
-                    ketcher2_dir.mkdir(parents=True, exist_ok=True)
-                    # ZIP extracts into standalone/ subdirectory — strip that level
-                    for member in zf.infolist():
-                        parts = member.filename.split("/", 1)
-                        if len(parts) < 2 or not parts[1]:
-                            continue
-                        dest = ketcher2_dir / parts[1]
-                        if member.is_dir():
-                            dest.mkdir(parents=True, exist_ok=True)
-                        else:
-                            dest.parent.mkdir(parents=True, exist_ok=True)
-                            dest.write_bytes(zf.read(member.filename))
-            os.unlink(tmp.name)
-            console.print("[green]Ketcher downloaded.[/green]")
-        except Exception as e:
-            console.print(f"[yellow]Warning: Could not download Ketcher ({e}). Draw Structure will be unavailable.[/yellow]")
 
     from targetrecon.webapp import run
     run(host=host, port=port, debug=debug)
