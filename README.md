@@ -427,7 +427,15 @@ src/targetrecon/
 
 ---
 
-## Acknowledgments
+## Author
+
+**Hemantn Nagar**
+📧 [hn533621@ohio.edu](mailto:hn533621@ohio.edu)
+🔗 [github.com/nagarh](https://github.com/nagarh)
+
+---
+
+## References
 
 Data from: [UniProt](https://www.uniprot.org/) · [RCSB PDB](https://www.rcsb.org/) · [AlphaFold DB](https://alphafold.ebi.ac.uk/) · [ChEMBL](https://www.ebi.ac.uk/chembl/) · [STRING-DB](https://string-db.org/)
 
