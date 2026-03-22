@@ -30,7 +30,9 @@ pinned: false
 
 ## What is TargetRecon?
 
-TargetRecon is a Python CLI and web app that pulls data from **4 public databases** and compiles it into a single, richly formatted report for any protein drug target. No API keys. No account. No manual copy-pasting.
+TargetRecon is a Python CLI, web app, and Jupyter-ready library for comprehensive drug target analysis. Given a gene name, UniProt accession, or ChEMBL ID, TargetRecon fetches and integrates data across **4 public databases** — protein annotations, 3D structures, predicted AlphaFold models, bioactivity profiles, and protein–protein interaction networks — into a single richly formatted interactive report.
+
+Whether you are profiling a novel target, exploring known inhibitors, or mapping a compound to its protein targets, TargetRecon consolidates the full analysis workflow in one place. It also ships with an **Agentic AI assistant** so you can interrogate the data conversationally.
 
 Think of it as [`gget`](https://github.com/pachterlab/gget) for drug discovery — or [TargetDB](https://github.com/sdecesco/targetDB) reimagined for the AlphaFold era.
 
