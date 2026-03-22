@@ -12,7 +12,7 @@ pinned: false
   <img src="https://img.shields.io/badge/python-≥3.10-blue?logo=python&logoColor=white" alt="Python">
   <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/version-0.1.12-orange" alt="Version">
-  <img src="https://img.shields.io/badge/databases-4-purple" alt="Databases">
+  <img src="https://img.shields.io/badge/databases-5-purple" alt="Databases">
   <img src="https://img.shields.io/pypi/v/targetrecon?color=blue" alt="PyPI">
   <a href="https://huggingface.co/spaces/hemantn/targetrecon"><img src="https://img.shields.io/badge/🤗%20HuggingFace-Spaces-yellow" alt="HuggingFace Spaces"></a>
 </p>
@@ -30,7 +30,7 @@ pinned: false
 
 ## What is TargetRecon?
 
-TargetRecon is a Python CLI, web app, and Jupyter-ready library for comprehensive drug target analysis. Given a gene name, UniProt accession, or ChEMBL ID, TargetRecon fetches and integrates data across **4 public databases** — protein annotations, 3D structures, predicted AlphaFold models, bioactivity profiles, and protein–protein interaction networks — into a single richly formatted interactive report.
+TargetRecon is a Python CLI, web app, and Jupyter-ready library for comprehensive drug target analysis. Given a gene name, UniProt accession, or ChEMBL ID, TargetRecon fetches and integrates data across **5 public databases** — protein annotations, 3D structures, predicted AlphaFold models, bioactivity profiles, and protein–protein interaction networks — into a single richly formatted interactive report.
 
 Whether you are profiling a novel target, exploring known inhibitors, or mapping a compound to its protein targets, TargetRecon consolidates the full analysis workflow in one place. It also ships with an **Agentic AI assistant** so you can interrogate the data conversationally.
 
@@ -38,7 +38,7 @@ Think of it as [`gget`](https://github.com/pachterlab/gget) for drug discovery �
 
 ---
 
-## Four Data Sources, One Report
+## Five Data Sources, One Report
 
 | Source | Data |
 |---|---|
