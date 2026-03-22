@@ -2671,7 +2671,7 @@ def disambiguate_run():
         try:
             resp = httpx.get(
                 f"https://www.ebi.ac.uk/chembl/api/data/target/{q}.json",
-                timeout=10, follow_redirects=True,
+                timeout=30, follow_redirects=True,
             )
             tdata = resp.json() if resp.status_code == 200 else {}
         except Exception:
@@ -2746,7 +2746,7 @@ def disambiguate_page():
         try:
             resp = httpx.get(
                 f"https://www.ebi.ac.uk/chembl/api/data/target/{q}.json",
-                timeout=10, follow_redirects=True,
+                timeout=30, follow_redirects=True,
             )
             tdata = resp.json() if resp.status_code == 200 else {}
         except Exception:
@@ -2759,9 +2759,9 @@ def disambiguate_page():
         )
 
         if not is_molecule:
-            # It's a proper target — go straight to recon
+            # It's a proper target — run recon directly (avoid loop back through recon_run)
             return redirect(url_for(
-                "recon_page", q=q,
+                "disambiguate_run", q=q,
                 max_res=max_res, min_pc=min_pc,
             ))
 
@@ -2769,8 +2769,9 @@ def disambiguate_page():
         targets = asyncio.run(fetch_compound_targets(q, limit=20))
         targets = [t for t in targets if t.uniprot_id]
         if not targets:
+            # No compound targets found (or API timed out) — let recon handle it
             return redirect(url_for(
-                "recon_page", q=q,
+                "disambiguate_run", q=q,
                 max_res=max_res, min_pc=min_pc,
             ))
 
@@ -2811,14 +2812,6 @@ def recon_run():
     max_res = float(request.args.get("max_res", 4.0))
     min_pc  = float(request.args.get("min_pc", 0.0))
     max_bio = int(request.args.get("max_bio", 1000))
-
-    # If the query is a CHEMBL ID it could be a compound — disambiguate first
-    from targetrecon.resolver import classify_query, QueryType
-    if classify_query(q) == QueryType.CHEMBL:
-        return redirect(url_for(
-            "disambiguate_page", q=q.upper(),
-            max_res=max_res, min_pc=min_pc, max_bio=max_bio,
-        ))
 
     # Check session cache first (agent may have already run this query)
     sid = request.args.get("sid", "").strip()
