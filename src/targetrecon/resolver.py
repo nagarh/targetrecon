@@ -124,35 +124,48 @@ def classify_query(query: str) -> QueryType:
     return QueryType.GENE
 
 
-async def resolve_ids(query: str) -> tuple[str | None, str | None]:
-    """Return (uniprot_id, chembl_id) for any query type."""
+async def resolve_ids(query: str) -> tuple[str | None, str | None, str | None]:
+    """Return (uniprot_id, chembl_id, ensembl_id) for any query type."""
     from targetrecon.clients.uniprot import fetch_uniprot, search_gene
     from targetrecon.clients.chembl import resolve_target_chembl_id
 
     qtype = classify_query(query)
+    gene_symbol: str | None = None
 
     if qtype == QueryType.UNIPROT:
         uniprot_id = query.upper()
         info = await fetch_uniprot(uniprot_id)
         chembl_id = info.chembl_id if info else None
+        gene_symbol = info.gene_name if info else None
         if not chembl_id:
             chembl_id = await resolve_target_chembl_id(uniprot_id)
-        return uniprot_id, chembl_id
 
     elif qtype == QueryType.CHEMBL:
         chembl_id = query.upper()
         uniprot_id = await _resolve_uniprot_from_chembl(chembl_id)
-        return uniprot_id, chembl_id
+        if uniprot_id:
+            info = await fetch_uniprot(uniprot_id)
+            gene_symbol = info.gene_name if info else None
 
     else:  # GENE
+        gene_symbol = query.strip()
         uniprot_id = await search_gene(query)
         if not uniprot_id:
-            return None, None
+            return None, None, None
         info = await fetch_uniprot(uniprot_id)
         chembl_id = info.chembl_id if info else None
+        if info and info.gene_name:
+            gene_symbol = info.gene_name
         if not chembl_id:
             chembl_id = await resolve_target_chembl_id(uniprot_id)
-        return uniprot_id, chembl_id
+
+    ensembl_id = await _resolve_ensembl(gene_symbol) if gene_symbol else None
+    return uniprot_id, chembl_id, ensembl_id
+
+
+async def _resolve_ensembl(gene_symbol: str) -> str | None:
+    from targetrecon.clients.opentargets import resolve_ensembl_id
+    return await resolve_ensembl_id(gene_symbol)
 
 
 async def _resolve_uniprot_from_chembl(chembl_id: str) -> str | None:

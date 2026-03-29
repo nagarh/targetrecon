@@ -31,6 +31,20 @@ async def safe_get(
         return None
 
 
+async def safe_post(
+    client: httpx.AsyncClient,
+    url: str,
+    json_body: dict | None = None,
+) -> Any:
+    """POST JSON, returning None on any error."""
+    try:
+        resp = await client.post(url, json=json_body)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return None
+
+
 async def safe_get_text(
     client: httpx.AsyncClient,
     url: str,

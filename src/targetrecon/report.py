@@ -125,18 +125,23 @@ details.sec .sec-body { padding: 0 0 0 0; }
   <div class="hdr-meta">
     <span>UniProt <a href="https://www.uniprot.org/uniprot/{{ report.uniprot.uniprot_id }}" target="_blank">{{ report.uniprot.uniprot_id }}</a></span>
     {% if report.uniprot.chembl_id %}<span>ChEMBL <a href="https://www.ebi.ac.uk/chembl/target_report_card/{{ report.uniprot.chembl_id }}" target="_blank">{{ report.uniprot.chembl_id }}</a></span>{% endif %}
+    {% if report.opentargets %}<span>Open Targets <a href="https://platform.opentargets.org/target/{{ report.opentargets.ensembl_id }}" target="_blank">{{ report.opentargets.ensembl_id }}</a></span>{% endif %}
     <span>Organism <strong style="color:var(--text);font-weight:500">{{ report.uniprot.organism }}</strong></span>
     <span>Length <strong style="color:var(--text);font-weight:500">{{ report.uniprot.sequence_length }} aa</strong></span>
   </div>
 </div>
 
 <!-- Stats -->
-<div class="stats">
+<div class="stats" style="grid-template-columns:repeat({% if report.opentargets %}7{% else %}5{% endif %},1fr)">
   <div class="stat"><div class="stat-n" style="color:var(--blue)">{{ report.num_pdb_structures }}</div><div class="stat-l">PDB Structures</div></div>
   <div class="stat"><div class="stat-n" style="color:var(--green)">{{ report.num_bioactivities }}</div><div class="stat-l">Bioactivities</div></div>
   <div class="stat"><div class="stat-n" style="color:var(--orange)">{{ report.num_unique_ligands }}</div><div class="stat-l">Unique Ligands</div></div>
   <div class="stat"><div class="stat-n" style="color:var(--purple)">{% if report.best_ligand and report.best_ligand.best_pchembl %}{{ "%.2f"|format(report.best_ligand.best_pchembl) }}{% else %}—{% endif %}</div><div class="stat-l">Best pChEMBL</div></div>
   <div class="stat"><div class="stat-n" style="color:var(--blue)">{% if report.alphafold %}1{% else %}0{% endif %}</div><div class="stat-l">AlphaFold Model</div></div>
+  {% if report.opentargets %}
+  <div class="stat"><div class="stat-n" style="color:var(--green)">{{ report.opentargets.total_disease_associations }}</div><div class="stat-l">Diseases</div></div>
+  <div class="stat"><div class="stat-n" style="color:var(--orange)">{{ report.opentargets.known_drugs|length }}</div><div class="stat-l">Known Drugs</div></div>
+  {% endif %}
 </div>
 
 <!-- Protein Information -->
@@ -175,6 +180,147 @@ details.sec .sec-body { padding: 0 0 0 0; }
     {% endif %}
   </div>
 </div>
+
+<!-- Open Targets: Tractability -->
+{% if report.opentargets and report.opentargets.tractability %}
+<div class="sec">
+  <div class="sec-title">Tractability assessment <span style="font-weight:400;color:var(--dim);font-size:11px;margin-left:.5rem">(Open Targets)</span></div>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:1rem">
+    {% set mod_names = {"SM":"Small Molecule","AB":"Antibody","PR":"PROTAC","OC":"Other Clinical"} %}
+    {% set mod_colors = {"SM":"var(--blue)","AB":"var(--green)","PR":"var(--purple)","OC":"var(--orange)"} %}
+    {% for mod_code in ["SM","AB","PR","OC"] %}
+    <div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:.75rem 1rem">
+      <div style="font-size:11px;font-weight:700;color:{{ mod_colors[mod_code] }};text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem">{{ mod_names[mod_code] }}</div>
+      {% set labels = [] %}
+      {% for t in report.opentargets.tractability %}{% if t.modality == mod_code %}{% set _ = labels.append(t.label) %}{% endif %}{% endfor %}
+      {% if labels %}
+        {% for l in labels %}<span class="tag t-green" style="font-size:10.5px">{{ l }}</span>{% endfor %}
+      {% else %}
+        <span style="font-size:11.5px;color:var(--dim)">No evidence</span>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Open Targets: Disease Associations -->
+{% if report.opentargets and report.opentargets.disease_associations %}
+<details class="sec" open>
+  <summary>
+    <span style="display:flex;align-items:center;gap:.75rem">
+      <span class="sec-title" style="margin:0">Disease associations <span style="font-weight:400;color:var(--dim);font-size:11px">(Open Targets)</span></span>
+      <span style="font-size:11px;color:var(--dim);background:var(--bg3);border:1px solid var(--border);padding:2px 10px;border-radius:20px">{{ report.opentargets.total_disease_associations }} total</span>
+    </span>
+    <span class="arrow">&#9654;</span>
+  </summary>
+  <div class="sec-body" style="border-top:1px solid var(--border);overflow-x:auto">
+  <table>
+    <thead><tr><th>#</th><th>Disease</th><th class="r">Score</th><th>Therapeutic Area</th><th class="r">Genetic</th><th class="r">Drugs</th><th class="r">Somatic</th><th class="r">Literature</th></tr></thead>
+    <tbody>
+    {% for a in report.opentargets.disease_associations[:30] %}
+    <tr>
+      <td style="color:var(--dim);font-size:12px">{{ loop.index }}</td>
+      <td><a href="https://platform.opentargets.org/evidence/{{ report.opentargets.ensembl_id }}/{{ a.disease_id }}" target="_blank">{{ a.disease_name }}</a></td>
+      <td class="r mono {% if a.overall_score >= 0.5 %}pc-hi{% elif a.overall_score >= 0.2 %}pc-md{% else %}pc-lo{% endif %}">{{ "%.3f"|format(a.overall_score) }}</td>
+      <td style="font-size:11.5px;color:var(--muted)">{{ a.therapeutic_areas[:2]|join(", ") }}</td>
+      <td class="r mono" style="font-size:11.5px">{% if a.datatype_scores.get("genetic_association") %}{{ "%.2f"|format(a.datatype_scores["genetic_association"]) }}{% else %}<span style="color:var(--dim)">—</span>{% endif %}</td>
+      <td class="r mono" style="font-size:11.5px">{% if a.datatype_scores.get("known_drug") %}{{ "%.2f"|format(a.datatype_scores["known_drug"]) }}{% else %}<span style="color:var(--dim)">—</span>{% endif %}</td>
+      <td class="r mono" style="font-size:11.5px">{% if a.datatype_scores.get("somatic_mutation") %}{{ "%.2f"|format(a.datatype_scores["somatic_mutation"]) }}{% else %}<span style="color:var(--dim)">—</span>{% endif %}</td>
+      <td class="r mono" style="font-size:11.5px">{% if a.datatype_scores.get("literature") %}{{ "%.2f"|format(a.datatype_scores["literature"]) }}{% else %}<span style="color:var(--dim)">—</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
+
+<!-- Open Targets: Known Drugs -->
+{% if report.opentargets and report.opentargets.known_drugs %}
+<details class="sec" open>
+  <summary>
+    <span style="display:flex;align-items:center;gap:.75rem">
+      <span class="sec-title" style="margin:0">Known drugs & clinical candidates <span style="font-weight:400;color:var(--dim);font-size:11px">(Open Targets)</span></span>
+      <span style="font-size:11px;color:var(--dim);background:var(--bg3);border:1px solid var(--border);padding:2px 10px;border-radius:20px">{{ report.opentargets.known_drugs|length }} total</span>
+    </span>
+    <span class="arrow">&#9654;</span>
+  </summary>
+  <div class="sec-body" style="border-top:1px solid var(--border);overflow-x:auto">
+  <table>
+    <thead><tr><th>Drug</th><th>ChEMBL</th><th>Type</th><th>Max Phase</th><th>Mechanism</th><th>Indications</th></tr></thead>
+    <tbody>
+    {% for d in report.opentargets.known_drugs[:30] %}
+    {% set phase = d.max_clinical_stage or "" %}
+    <tr>
+      <td style="font-weight:500">{{ d.drug_name }}</td>
+      <td><a href="https://platform.opentargets.org/drug/{{ d.drug_id }}" target="_blank" class="mono" style="font-size:11px">{{ d.drug_id }}</a></td>
+      <td>{% if d.drug_type %}<span class="tag t-blue" style="font-size:10.5px">{{ d.drug_type }}</span>{% else %}<span style="color:var(--dim)">—</span>{% endif %}</td>
+      <td><span class="tag {% if 'IV' in phase %}t-green{% elif 'III' in phase %}t-blue{% elif 'II' in phase %}t-purple{% else %}t-gray{% endif %}" style="font-size:10.5px">{{ phase or "—" }}</span></td>
+      <td style="font-size:12px;color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ d.mechanism_of_action or '' }}">{{ d.mechanism_of_action or "—" }}</td>
+      <td style="font-size:11.5px;color:var(--muted)">{{ d.diseases[:3]|join(", ") }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
+
+<!-- Open Targets: Safety -->
+{% if report.opentargets and report.opentargets.safety_liabilities %}
+<details class="sec">
+  <summary>
+    <span style="display:flex;align-items:center;gap:.75rem">
+      <span class="sec-title" style="margin:0">Safety liabilities <span style="font-weight:400;color:var(--dim);font-size:11px">(Open Targets)</span></span>
+      <span style="font-size:11px;color:var(--red);background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.2);padding:2px 10px;border-radius:20px">{{ report.opentargets.safety_liabilities|length }} signals</span>
+    </span>
+    <span class="arrow">&#9654;</span>
+  </summary>
+  <div class="sec-body" style="border-top:1px solid var(--border);overflow-x:auto">
+  <table>
+    <thead><tr><th>Event</th><th>Source</th><th>Tissues</th><th>Effects</th></tr></thead>
+    <tbody>
+    {% for s in report.opentargets.safety_liabilities %}
+    <tr>
+      <td style="color:var(--red);font-weight:500">{{ s.event or "—" }}</td>
+      <td><span class="tag t-gray" style="font-size:10.5px">{{ s.datasource }}</span></td>
+      <td style="font-size:11.5px;color:var(--muted)">{% for b in s.biosamples[:3] %}{{ b.get("tissueLabel","") }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+      <td style="font-size:11.5px;color:var(--muted)">{% for e in s.effects[:2] %}{{ e.get("direction","") }}{% if e.get("dosing") %} ({{ e["dosing"] }}){% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
+
+<!-- Open Targets: Pathways -->
+{% if report.opentargets and report.opentargets.pathways %}
+<details class="sec">
+  <summary>
+    <span style="display:flex;align-items:center;gap:.75rem">
+      <span class="sec-title" style="margin:0">Reactome pathways <span style="font-weight:400;color:var(--dim);font-size:11px">(Open Targets)</span></span>
+      <span style="font-size:11px;color:var(--dim);background:var(--bg3);border:1px solid var(--border);padding:2px 10px;border-radius:20px">{{ report.opentargets.pathways|length }} total</span>
+    </span>
+    <span class="arrow">&#9654;</span>
+  </summary>
+  <div class="sec-body" style="border-top:1px solid var(--border);overflow-x:auto">
+  <table>
+    <thead><tr><th>Pathway</th><th>Category</th><th>Reactome ID</th></tr></thead>
+    <tbody>
+    {% for p in report.opentargets.pathways %}
+    <tr>
+      <td><a href="https://reactome.org/content/detail/{{ p.pathway_id }}" target="_blank">{{ p.pathway_name }}</a></td>
+      <td><span class="tag t-purple" style="font-size:10.5px">{{ p.top_level_term }}</span></td>
+      <td class="mono" style="font-size:11px;color:var(--dim)">{{ p.pathway_id }}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</details>
+{% endif %}
 
 <!-- Bioactivity Analysis (before 3D so it loads fast) -->
 {% if report.bioactivities %}
@@ -301,7 +447,7 @@ details.sec .sec-body { padding: 0 0 0 0; }
 <div class="footer">
   Generated by <strong>TargetRecon v{{ report.targetrecon_version }}</strong>
   on {{ report.generated_at.strftime('%Y-%m-%d %H:%M UTC') }}
-  &nbsp;&middot;&nbsp; Data from UniProt &middot; RCSB PDB &middot; AlphaFold DB &middot; ChEMBL &middot; STRING-DB
+  &nbsp;&middot;&nbsp; Data from UniProt &middot; RCSB PDB &middot; AlphaFold DB &middot; ChEMBL &middot; STRING-DB{% if report.opentargets %} &middot; Open Targets{% endif %}
 </div>
 </div><!-- /wrap -->
 
