@@ -20,6 +20,7 @@ async def recon_async(
     max_bioactivities: int | None = 1000,
     min_pchembl: float | None = None,
     verbose: bool = True,
+    skip_opentargets: bool = False,
 ) -> TargetReport:
     from targetrecon.clients.alphafold import fetch_alphafold
     from targetrecon.clients.chembl import fetch_bioactivities_by_target
@@ -37,7 +38,7 @@ async def recon_async(
     if max_bioactivities is None:
         max_bioactivities = 100_000
 
-    uniprot_id, chembl_id = await resolve_ids(query)
+    uniprot_id, chembl_id, ensembl_id = await resolve_ids(query)
 
     if not uniprot_id:
         return TargetReport(query=query)
@@ -54,11 +55,14 @@ async def recon_async(
 
     if verbose:
         console.print(
-            f"[cyan]UniProt: {canonical_id}  |  ChEMBL: {chembl_id or 'not found'}[/cyan]"
+            f"[cyan]UniProt: {canonical_id}  |  ChEMBL: {chembl_id or 'not found'}"
+            f"  |  Ensembl: {ensembl_id or 'not found'}[/cyan]"
         )
-        console.print("[cyan]Fetching data from 4 sources in parallel...[/cyan]")
+        console.print("[cyan]Fetching data from 5 sources in parallel...[/cyan]")
 
     # Parallel fetch via TaskGroup (using canonical_id so PDB/AlphaFold resolve correctly)
+    from targetrecon.clients.opentargets import fetch_opentargets
+
     async with asyncio.TaskGroup() as tg:
         pdb_task = tg.create_task(
             fetch_structures_for_uniprot(
@@ -82,6 +86,10 @@ async def recon_async(
 
         string_task = tg.create_task(fetch_interactions(canonical_id, limit=30))
 
+        ot_task: asyncio.Task | None = None
+        if ensembl_id and not skip_opentargets:
+            ot_task = tg.create_task(fetch_opentargets(ensembl_id))
+
     pdb_structures: list[PDBStructure] = pdb_task.result() or []
     alphafold = af_task.result()
     chembl_activities: list[BioactivityRecord] = (
@@ -90,6 +98,7 @@ async def recon_async(
     from targetrecon.models import ProteinInteraction
     raw_interactions = string_task.result() or []
     interactions = [ProteinInteraction(**i) for i in raw_interactions]
+    opentargets_data = ot_task.result() if ot_task else None
 
     all_bioactivities = chembl_activities
     if min_pchembl is not None:
@@ -113,6 +122,13 @@ async def recon_async(
             f"{len(ligand_summary)} unique ligands[/green]"
         )
 
+    if verbose and opentargets_data:
+        n_dis = opentargets_data.total_disease_associations
+        n_drugs = len(opentargets_data.known_drugs)
+        console.print(
+            f"[green]{n_dis} disease associations · {n_drugs} known drugs (Open Targets)[/green]"
+        )
+
     return TargetReport(
         query=query,
         uniprot=uniprot_info,
@@ -125,6 +141,7 @@ async def recon_async(
         num_bioactivities=len(all_bioactivities),
         num_unique_ligands=len(ligand_summary),
         best_ligand=best_ligand,
+        opentargets=opentargets_data,
     )
 
 
@@ -133,12 +150,14 @@ def recon(
     max_pdb_resolution: float = 4.0,
     max_bioactivities: int | None = 1000,
     min_pchembl: float | None = None,
+    skip_opentargets: bool = False,
 ) -> TargetReport:
     coro = recon_async(
         query,
         max_pdb_resolution=max_pdb_resolution,
         max_bioactivities=max_bioactivities,
         min_pchembl=min_pchembl,
+        skip_opentargets=skip_opentargets,
     )
     try:
         asyncio.get_running_loop()

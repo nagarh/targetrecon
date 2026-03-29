@@ -316,6 +316,89 @@ TOOL_DEFS = [
             "required": []
         }
     },
+    {
+        "name": "get_disease_associations",
+        "description": (
+            "Return Open Targets disease associations for a cached target, "
+            "scored by multi-evidence strength (genetic, somatic, drugs, pathways, "
+            "literature, expression, animal models). Shows therapeutic areas and "
+            "per-datatype score breakdown."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
+                "top_n": {"type": "integer", "description": "Number of top associations to return (default 20)"},
+                "min_score": {"type": "number", "description": "Minimum overall association score 0-1 (default 0.1)"},
+                "therapeutic_area": {"type": "string", "description": "Filter by therapeutic area name (case-insensitive substring match)"},
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_known_drugs",
+        "description": (
+            "Return approved and clinical-stage drugs targeting this protein, "
+            "with clinical phase, mechanism of action, drug type, and disease indications. "
+            "Source: Open Targets clinical mining pipeline (ChEMBL + ClinicalTrials.gov + EMA + PMDA + TTD)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
+                "min_phase": {
+                    "type": "string",
+                    "description": "Minimum clinical phase filter (e.g. 'Phase II', 'Phase III', 'Phase IV')"
+                },
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_target_tractability",
+        "description": (
+            "Return druggability/tractability assessment for a cached target across 4 modalities: "
+            "small molecule (SM), antibody (AB), PROTAC (PR), and other clinical (OC). "
+            "Includes pocket quality, ligand evidence, clinical precedence, and membrane accessibility."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_target_safety",
+        "description": (
+            "Return known safety liabilities for a target from ToxCast, AOPWiki, "
+            "and ClinPGx. Includes adverse events, affected tissues, and effect direction/dosing."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
+            },
+            "required": ["query"]
+        }
+    },
+    {
+        "name": "get_tissue_expression",
+        "description": (
+            "Return tissue expression profile (RNA + protein) across human tissues from GTEx, "
+            "Human Protein Atlas, and Expression Atlas. "
+            "Useful for on-target/off-tissue toxicity assessment and tissue-selective targeting."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
+                "top_n": {"type": "integer", "description": "Top N tissues by RNA expression level (default 20)"},
+            },
+            "required": ["query"]
+        }
+    },
 ]
 
 TOOL_DISPLAY = {
@@ -332,12 +415,17 @@ TOOL_DISPLAY = {
     "similarity_search": "Running similarity search (Morgan/Tanimoto)",
     "run_python": "Executing Python script",
     "list_session_files": "Listing session files",
+    "get_disease_associations": "Fetching Open Targets disease associations",
+    "get_known_drugs": "Fetching known drugs & clinical candidates",
+    "get_target_tractability": "Fetching tractability assessment",
+    "get_target_safety": "Fetching safety liabilities",
+    "get_tissue_expression": "Fetching tissue expression profile",
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
 SYSTEM_PROMPT = """You are a specialized AI assistant embedded in TargetRecon, a drug-target intelligence platform used by medicinal chemists and drug discovery scientists.
 
-You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, and STRING-DB, as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). ALWAYS use tools to get data — never generate, estimate, or recall numbers, properties, structures, or analysis results from your training knowledge. Every number in your response must come from a tool result.
+You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, STRING-DB, and the Open Targets Platform (disease associations, tractability, safety, known drugs, tissue expression, pathways, pharmacogenomics), as well as cheminformatics tools powered by RDKit (scaffold analysis, drug-likeness, similarity search). ALWAYS use tools to get data — never generate, estimate, or recall numbers, properties, structures, or analysis results from your training knowledge. Every number in your response must come from a tool result.
 
 Guidelines:
 - Use **bold** for gene names, `code` for IDs (UniProt, PDB, ChEMBL), and tables for comparisons
@@ -386,6 +474,31 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
     u = report.uniprot
     best = report.best_ligand
 
+    ot = report.opentargets
+    ot_summary = {}
+    if ot:
+        tract_by_mod: dict[str, list[str]] = {}
+        for t in ot.tractability:
+            tract_by_mod.setdefault(t.modality, []).append(t.label)
+        tract_str = " | ".join(
+            f"{mod}: {', '.join(labels[:2])}"
+            for mod, labels in tract_by_mod.items()
+        )
+        top_disease = ot.disease_associations[0] if ot.disease_associations else None
+        ot_summary = {
+            "ensembl_id": ot.ensembl_id,
+            "disease_associations_count": ot.total_disease_associations,
+            "top_disease": {
+                "name": top_disease.disease_name,
+                "score": round(top_disease.overall_score, 3),
+            } if top_disease else None,
+            "known_drugs_count": len(ot.known_drugs),
+            "tractability_summary": tract_str or "No tractability data",
+            "safety_liabilities_count": len(ot.safety_liabilities),
+            "pathways_count": len(ot.pathways),
+            "is_essential": ot.is_essential,
+        }
+
     result = {
         "target": query,
         "uniprot_id": u.uniprot_id,
@@ -408,6 +521,7 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
         "disease_associations": u.disease_associations[:5],
         "subcellular_locations": u.subcellular_locations[:3],
         "function_snippet": (u.function_description or "")[:300],
+        **ot_summary,
         "_action_links": [
             {"label": "View full report", "href": f"/recon/run?q={query}", "external": False, "report": True},
         ]
@@ -568,7 +682,7 @@ async def _tool_get_protein_info(inputs: dict, report_cache: dict) -> dict:
     if key in report_cache and report_cache[key].uniprot:
         u = report_cache[key].uniprot
     else:
-        uniprot_id, _ = await resolve_ids(query)
+        uniprot_id, _, _ = await resolve_ids(query)
         if not uniprot_id:
             return {"error": f"Could not resolve '{query}' to a UniProt entry."}
         u = await fetch_uniprot(uniprot_id)
@@ -616,7 +730,7 @@ async def _tool_get_protein_interactions(inputs: dict, report_cache: dict) -> di
         # Fetch fresh if not cached
         from targetrecon.resolver import resolve_ids
         from targetrecon.clients.string_db import fetch_interactions
-        uniprot_id, _ = await resolve_ids(inputs["query"])
+        uniprot_id, _, _ = await resolve_ids(inputs["query"])
         if not uniprot_id:
             return {"error": f"Could not resolve '{inputs['query']}'."}
         raw = await fetch_interactions(uniprot_id, limit=30)
@@ -1105,6 +1219,198 @@ async def _tool_list_session_files(inputs: dict, report_cache: dict) -> dict:
     return {"files": files, "total": len(files), "_action_links": action_links}
 
 
+def _get_ot_or_error(inputs: dict, report_cache: dict):
+    query = inputs["query"].strip().upper()
+    report = report_cache.get(query)
+    if not report:
+        return None, {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+    if not report.opentargets:
+        return None, {"error": f"No Open Targets data available for '{inputs['query']}'. Target may not be in Open Targets."}
+    return report.opentargets, None
+
+
+async def _tool_get_disease_associations(inputs: dict, report_cache: dict) -> dict:
+    ot, err = _get_ot_or_error(inputs, report_cache)
+    if err:
+        return err
+
+    top_n = int(inputs.get("top_n", 20))
+    min_score = float(inputs.get("min_score", 0.1))
+    ta_filter = (inputs.get("therapeutic_area") or "").lower()
+
+    assocs = [a for a in ot.disease_associations if a.overall_score >= min_score]
+    if ta_filter:
+        assocs = [a for a in assocs if any(ta_filter in ta.lower() for ta in a.therapeutic_areas)]
+    assocs = assocs[:top_n]
+
+    rows = []
+    for a in assocs:
+        rows.append({
+            "disease": a.disease_name,
+            "disease_id": a.disease_id,
+            "overall_score": round(a.overall_score, 3),
+            "therapeutic_areas": a.therapeutic_areas[:3],
+            "genetic_association": round(a.datatype_scores.get("genetic_association", 0), 3),
+            "known_drug": round(a.datatype_scores.get("known_drug", 0), 3),
+            "somatic_mutation": round(a.datatype_scores.get("somatic_mutation", 0), 3),
+            "literature": round(a.datatype_scores.get("literature", 0), 3),
+        })
+
+    action_links = []
+    if ot.ensembl_id:
+        action_links.append({
+            "label": "Open Targets",
+            "href": f"https://platform.opentargets.org/target/{ot.ensembl_id}/associations",
+            "external": True,
+        })
+
+    return {
+        "target": inputs["query"],
+        "total_associations": ot.total_disease_associations,
+        "showing": len(rows),
+        "associations": rows,
+        "_action_links": action_links,
+    }
+
+
+async def _tool_get_known_drugs(inputs: dict, report_cache: dict) -> dict:
+    ot, err = _get_ot_or_error(inputs, report_cache)
+    if err:
+        return err
+
+    min_phase = (inputs.get("min_phase") or "").lower()
+    phase_order = {"phase iv": 4, "phase iii": 3, "phase ii": 2, "phase i": 1}
+    min_rank = phase_order.get(min_phase, 0)
+
+    drugs = ot.known_drugs
+    if min_rank:
+        drugs = [d for d in drugs if phase_order.get((d.max_clinical_stage or "").lower(), 0) >= min_rank]
+
+    rows = []
+    for d in drugs:
+        rows.append({
+            "drug_name": d.drug_name,
+            "drug_id": d.drug_id,
+            "drug_type": d.drug_type,
+            "max_clinical_stage": d.max_clinical_stage,
+            "mechanism_of_action": d.mechanism_of_action,
+            "diseases": d.diseases[:3],
+        })
+
+    action_links = []
+    for d in drugs[:5]:
+        if d.drug_id:
+            action_links.append({
+                "label": d.drug_id,
+                "href": f"https://platform.opentargets.org/drug/{d.drug_id}",
+                "external": True,
+            })
+
+    return {
+        "target": inputs["query"],
+        "total_drugs": len(ot.known_drugs),
+        "showing": len(rows),
+        "drugs": rows,
+        "_action_links": action_links,
+    }
+
+
+async def _tool_get_target_tractability(inputs: dict, report_cache: dict) -> dict:
+    ot, err = _get_ot_or_error(inputs, report_cache)
+    if err:
+        return err
+
+    modality_names = {"SM": "Small Molecule", "AB": "Antibody", "PR": "PROTAC", "OC": "Other Clinical"}
+    by_modality: dict[str, list[str]] = {}
+    for t in ot.tractability:
+        mod = t.modality
+        by_modality.setdefault(mod, []).append(t.label)
+
+    result = {}
+    for mod_code, mod_name in modality_names.items():
+        labels = by_modality.get(mod_code, [])
+        result[mod_name] = labels if labels else ["No evidence"]
+
+    action_links = []
+    if ot.ensembl_id:
+        action_links.append({
+            "label": "Open Targets",
+            "href": f"https://platform.opentargets.org/target/{ot.ensembl_id}",
+            "external": True,
+        })
+
+    return {
+        "target": inputs["query"],
+        "tractability": result,
+        "is_essential": ot.is_essential,
+        "genetic_constraint": [
+            {"type": c.constraint_type, "score": c.score, "oe": c.oe}
+            for c in ot.genetic_constraint
+        ],
+        "_action_links": action_links,
+    }
+
+
+async def _tool_get_target_safety(inputs: dict, report_cache: dict) -> dict:
+    ot, err = _get_ot_or_error(inputs, report_cache)
+    if err:
+        return err
+
+    rows = []
+    for s in ot.safety_liabilities:
+        tissues = [b.get("tissueLabel", "") for b in s.biosamples if b.get("tissueLabel")]
+        effects = []
+        for e in s.effects:
+            direction = e.get("direction", "")
+            dosing = e.get("dosing", "")
+            if direction or dosing:
+                effects.append(f"{direction} ({dosing})" if dosing else direction)
+        rows.append({
+            "event": s.event,
+            "datasource": s.datasource,
+            "tissues": tissues[:5],
+            "effects": effects[:3],
+        })
+
+    return {
+        "target": inputs["query"],
+        "total_liabilities": len(rows),
+        "safety_liabilities": rows,
+        "_action_links": [],
+    }
+
+
+async def _tool_get_tissue_expression(inputs: dict, report_cache: dict) -> dict:
+    ot, err = _get_ot_or_error(inputs, report_cache)
+    if err:
+        return err
+
+    top_n = int(inputs.get("top_n", 20))
+    exprs = sorted(
+        ot.expressions,
+        key=lambda e: e.rna_value if e.rna_value is not None else -1,
+        reverse=True,
+    )[:top_n]
+
+    rows = []
+    for e in exprs:
+        rows.append({
+            "tissue": e.tissue_label,
+            "organs": e.organs[:2],
+            "rna_value": round(e.rna_value, 2) if e.rna_value is not None else None,
+            "rna_level": e.rna_level,
+            "protein_level": e.protein_level,
+        })
+
+    return {
+        "target": inputs["query"],
+        "total_tissues": len(ot.expressions),
+        "showing": len(rows),
+        "expressions": rows,
+        "_action_links": [],
+    }
+
+
 TOOL_REGISTRY = {
     "search_target": _tool_search_target,
     "get_top_ligands": _tool_get_top_ligands,
@@ -1119,6 +1425,11 @@ TOOL_REGISTRY = {
     "similarity_search": _tool_similarity_search,
     "run_python": _tool_run_python,
     "list_session_files": _tool_list_session_files,
+    "get_disease_associations": _tool_get_disease_associations,
+    "get_known_drugs": _tool_get_known_drugs,
+    "get_target_tractability": _tool_get_target_tractability,
+    "get_target_safety": _tool_get_target_safety,
+    "get_tissue_expression": _tool_get_tissue_expression,
 }
 
 

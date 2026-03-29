@@ -128,6 +128,12 @@ def main(ctx: click.Context) -> None:
     default=False,
     help="Suppress progress messages.",
 )
+@click.option(
+    "--no-opentargets",
+    is_flag=True,
+    default=False,
+    help="Skip Open Targets Platform queries.",
+)
 def run(
     query: str,
     formats: tuple[str, ...],
@@ -137,6 +143,7 @@ def run(
     min_pchembl: float | None,
     top_ligands: int,
     quiet: bool,
+    no_opentargets: bool,
 ) -> None:
     """Run target reconnaissance.
 
@@ -175,6 +182,7 @@ def run(
                 max_bioactivities=max_bioactivities,
                 min_pchembl=min_pchembl,
                 verbose=not quiet,
+                skip_opentargets=no_opentargets,
             )
         )
     except Exception as exc:
@@ -278,20 +286,21 @@ def resolve(query: str) -> None:
     async def _resolve():
         qtype = classify_query(query)
         console.print(f"[dim]Resolving '{query}' (detected as: {qtype.value})...[/dim]")
-        uniprot_id, chembl_id = await resolve_ids(query)
+        uniprot_id, chembl_id, ensembl_id = await resolve_ids(query)
         if not uniprot_id:
             console.print(f"[red]Could not resolve '{query}' to a protein target.[/red]")
             raise SystemExit(1)
         info = await fetch_uniprot(uniprot_id)
-        return uniprot_id, chembl_id, info
+        return uniprot_id, chembl_id, ensembl_id, info
 
-    uniprot_id, chembl_id, info = asyncio.run(_resolve())
+    uniprot_id, chembl_id, ensembl_id, info = asyncio.run(_resolve())
 
     table = Table(show_header=False, box=None, padding=(0, 2))
     table.add_column(style="bold cyan")
     table.add_column()
     table.add_row("UniProt ID", uniprot_id)
     table.add_row("ChEMBL ID", chembl_id or "—")
+    table.add_row("Ensembl ID", ensembl_id or "—")
     if info:
         table.add_row("Gene name", info.gene_name or "—")
         table.add_row("Protein name", info.protein_name or "—")
