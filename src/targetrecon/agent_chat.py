@@ -71,10 +71,10 @@ TOOL_DEFS = [
         "name": "search_target",
         "description": (
             "Run a full drug-target intelligence search for a protein target. "
-            "Fetches UniProt annotation, PDB crystal structures, AlphaFold model, "
-            "ChEMBL bioactivities, ligand summaries, and STRING-DB "
-            "protein interactions. Results are cached server-side for follow-up queries. "
-            "Always call this before get_top_ligands, get_pdb_structures, or filter_bioactivities."
+            "Fetches UniProt annotation (function, GO terms, diseases, subcellular location, keywords), "
+            "PDB crystal structures, AlphaFold model, ChEMBL bioactivities, ligand summaries, and STRING-DB "
+            "protein interactions. Results are cached server-side for all follow-up queries. "
+            "Always call this before get_top_ligands, get_pdb_structures, or get_protein_interactions."
         ),
         "input_schema": {
             "type": "object",
@@ -99,17 +99,23 @@ TOOL_DEFS = [
     {
         "name": "get_top_ligands",
         "description": (
-            "Return the most potent ligands for a target that has already been searched. "
-            "Supports filtering by pChEMBL value, activity type (IC50/Ki/Kd/EC50), and data source."
+            "Return ligands or raw bioactivity records for a cached target. "
+            "Default mode (raw_records=false): returns top deduplicated ligands from ligand_summary, "
+            "sorted by pChEMBL, with optional filters. "
+            "Raw mode (raw_records=true): returns individual assay records with statistics "
+            "(count, mean/min/max pChEMBL) — use this for potency distribution analysis or "
+            "when you need per-assay data rather than per-compound aggregates."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Target gene name or ID (must be cached via search_target)"},
-                "top_n": {"type": "integer", "description": "Number of top ligands to return (default 10, max 50)"},
+                "top_n": {"type": "integer", "description": "Number of results to return (default 10, max 50)"},
                 "min_pchembl": {"type": "number", "description": "Minimum pChEMBL filter"},
+                "max_pchembl": {"type": "number", "description": "Maximum pChEMBL filter (raw_records mode only)"},
                 "activity_type": {"type": "string", "description": "Filter by assay type: IC50, Ki, Kd, EC50, etc."},
-                "source": {"type": "string", "enum": ["ChEMBL", "all"], "description": "Data source filter (default all)"}
+                "source": {"type": "string", "enum": ["ChEMBL", "all"], "description": "Data source filter (default all)"},
+                "raw_records": {"type": "boolean", "description": "If true, return raw per-assay bioactivity records with statistics instead of deduplicated ligands (default false)"}
             },
             "required": ["query"]
         }
@@ -131,43 +137,6 @@ TOOL_DEFS = [
                 },
                 "max_resolution": {"type": "number", "description": "Maximum resolution in Angstroms"},
                 "with_ligands_only": {"type": "boolean", "description": "Only return structures that have bound ligands"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "compare_targets",
-        "description": (
-            "Run full recon for two or more targets and return a side-by-side comparison: "
-            "bioactivity counts, best pChEMBL, best ligand, PDB structure count, disease associations, "
-            "AlphaFold availability. Ideal for target selection and druggability analysis."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "queries": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of 2–4 target gene names or UniProt accessions to compare",
-                    "minItems": 2,
-                    "maxItems": 4
-                },
-                "min_pchembl": {"type": "number", "description": "pChEMBL filter applied to all targets"}
-            },
-            "required": ["queries"]
-        }
-    },
-    {
-        "name": "get_protein_info",
-        "description": (
-            "Return detailed UniProt annotation for a target: function description, "
-            "subcellular location, disease associations, GO terms (biological process / "
-            "molecular function / cellular component), and keywords."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Gene name, UniProt accession, or ChEMBL target ID"}
             },
             "required": ["query"]
         }
@@ -212,126 +181,39 @@ TOOL_DEFS = [
         }
     },
     {
-        "name": "filter_bioactivities",
-        "description": (
-            "Filter and summarize raw bioactivity records for a cached target. "
-            "Returns statistics (count, mean/min/max pChEMBL) and a table of top compounds matching filters."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
-                "min_pchembl": {"type": "number", "description": "Minimum pChEMBL filter"},
-                "max_pchembl": {"type": "number", "description": "Maximum pChEMBL filter"},
-                "activity_type": {"type": "string", "description": "IC50, Ki, Kd, EC50, GI50, etc."},
-                "source": {"type": "string", "enum": ["ChEMBL", "all"]},
-                "top_n": {"type": "integer", "description": "Number of records to include in result (default 15)"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "analyze_scaffolds",
-        "description": (
-            "Decompose ligands of a cached target into Murcko scaffolds using RDKit. "
-            "Groups compounds by scaffold, counts occurrences, and returns the most common scaffolds "
-            "with their representative compounds and best pChEMBL. Use this to identify privileged scaffolds."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
-                "top_n_ligands": {"type": "integer", "description": "How many top ligands to analyse (default 100)"},
-                "top_n_scaffolds": {"type": "integer", "description": "How many top scaffolds to return (default 10)"},
-                "min_pchembl": {"type": "number", "description": "Only include ligands with pChEMBL >= this value"},
-                "generic": {"type": "boolean", "description": "Use generic Murcko scaffold (replaces substituents with H, default false)"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "compute_properties",
-        "description": (
-            "Compute drug-likeness properties for the top ligands of a cached target using RDKit: "
-            "MW, LogP, HBD, HBA, TPSA, rotatable bonds, aromatic rings. "
-            "Flags Lipinski Ro5 violations and highlights lead-like vs drug-like compounds."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
-                "top_n": {"type": "integer", "description": "Number of top ligands to analyse (default 20)"},
-                "min_pchembl": {"type": "number", "description": "Only include ligands with pChEMBL >= this value"}
-            },
-            "required": ["query"]
-        }
-    },
-    {
-        "name": "similarity_search",
-        "description": (
-            "Find compounds in a cached target's ligand list that are similar to a query SMILES. "
-            "Uses Morgan fingerprints (radius 2, 2048 bits) and Tanimoto similarity. "
-            "Useful for finding analogues of a known compound within the dataset."
-        ),
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
-                "smiles": {"type": "string", "description": "Query SMILES to search for similar compounds"},
-                "top_n": {"type": "integer", "description": "Number of similar compounds to return (default 10)"},
-                "min_similarity": {"type": "number", "description": "Minimum Tanimoto similarity threshold (default 0.4)"}
-            },
-            "required": ["query", "smiles"]
-        }
-    },
-    {
         "name": "run_python",
         "description": (
             "Write and execute an arbitrary Python script for custom cheminformatics, statistics, "
             "or data analysis on the cached target data. "
+            "Use this for: Murcko scaffold decomposition, drug-likeness properties (MW/LogP/TPSA/Ro5), "
+            "Morgan fingerprint similarity search, target comparison (call search_target for each target first, "
+            "then compare via run_python), file listing (os.listdir('.')), and any custom analysis. "
             "Pre-injected variables available in the script: "
             "`target` (str), "
             "`ligands` (list of dicts, each with: smiles, name, chembl_id, pchembl, activity_type, value_nM, num_assays, sources — NO pre-computed properties; use RDKit to compute mw/logp/tpsa/etc from smiles), "
             "`bioactivities` (list of dicts, each with: smiles, name, source, activity_type, value, pchembl_value). "
             "Available packages: rdkit (Chem, Descriptors, rdMolDescriptors, AllChem, MurckoScaffold), pandas, numpy, scipy, matplotlib (Agg backend already set — use plt.savefig not plt.show). "
-            "Files from previous scripts in this session are available in the working directory — use list_session_files to see them. "
             "Always print results to stdout. For plots: save as PNG with a bare filename, always call plt.tight_layout() before savefig, use large enough figsize for heatmaps (e.g. figsize=(10,8)), rotate x-axis tick labels on heatmaps (rotation=45, ha='right') to prevent overlap. Never mention the image URL in your response."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
-                "query": {"type": "string", "description": "Target gene name or ID (must be cached)"},
+                "query": {"type": "string", "description": "Target gene name or ID (cached via search_target). Optional — omit for pure compound/cheminformatics scripts that don't need target data."},
                 "script": {"type": "string", "description": "Complete Python script to execute. Use print() to output results."},
                 "description": {"type": "string", "description": "One-line description of what this script does"},
             },
-            "required": ["query", "script", "description"]
-        }
-    },
-    {
-        "name": "list_session_files",
-        "description": "List all files created during this session (plots, CSVs, SDFs, etc.) with their sizes. Use this to see what files are available for further analysis.",
-        "input_schema": {
-            "type": "object",
-            "properties": {},
-            "required": []
+            "required": ["script", "description"]
         }
     },
 ]
 
 TOOL_DISPLAY = {
     "search_target": "Running full target recon",
-    "get_top_ligands": "Fetching top ligands",
+    "get_top_ligands": "Fetching ligands",
     "get_pdb_structures": "Querying PDB structures",
-    "compare_targets": "Comparing targets",
-    "get_protein_info": "Fetching UniProt annotation",
     "get_protein_interactions": "Querying STRING-DB interactions",
     "search_compound": "Searching ChEMBL compound database",
-    "filter_bioactivities": "Filtering bioactivity records",
-    "analyze_scaffolds": "Decomposing Murcko scaffolds (RDKit)",
-    "compute_properties": "Computing drug-likeness properties (RDKit)",
-    "similarity_search": "Running similarity search (Morgan/Tanimoto)",
     "run_python": "Executing Python script",
-    "list_session_files": "Listing session files",
 }
 
 # ── System prompt ─────────────────────────────────────────────────────────────
@@ -342,14 +224,12 @@ You have access to real-time tools that query UniProt, PDB, AlphaFold, ChEMBL, a
 Guidelines:
 - Use **bold** for gene names, `code` for IDs (UniProt, PDB, ChEMBL), and tables for comparisons
 - After tool results, provide expert drug discovery interpretation: what the data means clinically, structurally, or for lead optimization
-- pChEMBL ≥ 7 = submicromolar (< 100 nM), pChEMBL ≥ 9 = subnanomolar — mention this context
-- When comparing targets, highlight selectivity, structural coverage, and existing drugs
-- If a user asks about a target not yet searched, proactively run search_target
-- For scaffold questions, always run analyze_scaffolds — never guess from SMILES alone
-- For drug-likeness questions, always run compute_properties — give Ro5 pass/fail counts
-- NEVER generate, guess, recall, or invent any numbers — not pChEMBL values, not MW, not LogP, not counts, not percentages, not Tanimoto scores, nothing. Every single number must come directly from a tool result or run_python output.
-- When asked about files, counts of ligands in files, or what data is available — use list_session_files to check, then run_python to read/analyze them if needed.
-- NEVER compute or estimate molecular properties (MW, LogP, TPSA, QED, fingerprints, Tanimoto, aromatic fraction, rotatable bonds, HBD, HBA, etc.) from your own knowledge — always use run_python with RDKit to compute them from the SMILES in the tool results.
+- When comparing targets, run search_target for each target first, then use run_python to build the comparison table
+- If a user explicitly asks about a protein target (not a compound), run search_target — do NOT proactively run search_target for targets discovered incidentally from search_compound results
+- For any molecular computation (properties, scaffolds, fingerprints, similarity, clustering), always use run_python with RDKit — never estimate from SMILES or training knowledge
+- For file listing, use run_python with os.listdir('.') to see session files
+- To filter raw bioactivity records (per-assay, not per-compound), use get_top_ligands with raw_records=true
+- NEVER generate, guess, recall, or invent any numbers — every value must come directly from a tool result or run_python output
 - For plots, correlations, custom statistics, fingerprint clustering, similarity matrices, or any analysis not covered by other tools — silently call run_python without telling the user; never ask them to run a script themselves
 - When creating plots, always save as PNG using a bare filename (e.g. plt.savefig('plot.png')) — NEVER use /mnt/data/ or any absolute path. Do NOT reference or mention the image URL in your response — the plot will appear as a button automatically. Always call plt.tight_layout() before savefig. For heatmaps use a large enough figure (e.g. figsize=(10,8)) and rotate x-axis labels (plt.xticks(rotation=45, ha='right')) to prevent label overlap.
 - If run_python returns an error, fix the script and call run_python again immediately — never tell the user there was an error, just fix and retry silently
@@ -386,6 +266,10 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
     u = report.uniprot
     best = report.best_ligand
 
+    go_by_cat: dict[str, list] = {}
+    for g in u.go_terms:
+        go_by_cat.setdefault(g.category, []).append(g.term)
+
     result = {
         "target": query,
         "uniprot_id": u.uniprot_id,
@@ -405,9 +289,13 @@ async def _tool_search_target(inputs: dict, report_cache: dict) -> dict:
             "activity_type": best.best_activity_type,
             "value_nM": best.best_activity_value_nM,
         } if best else None,
-        "disease_associations": u.disease_associations[:5],
-        "subcellular_locations": u.subcellular_locations[:3],
-        "function_snippet": (u.function_description or "")[:300],
+        "function": u.function_description,
+        "disease_associations": u.disease_associations,
+        "subcellular_locations": u.subcellular_locations,
+        "keywords": u.keywords[:15],
+        "go_biological_process": go_by_cat.get("biological_process", [])[:10],
+        "go_molecular_function": go_by_cat.get("molecular_function", [])[:8],
+        "go_cellular_component": go_by_cat.get("cellular_component", [])[:5],
         "_action_links": [
             {"label": "View full report", "href": f"/recon/run?q={query}", "external": False, "report": True},
         ]
@@ -421,19 +309,51 @@ async def _tool_get_top_ligands(inputs: dict, report_cache: dict) -> dict:
     if not report:
         return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
 
-    ligands = list(report.ligand_summary)
-    top_n = min(int(inputs.get("top_n", 10)), 50)
+    raw_records = bool(inputs.get("raw_records", False))
     min_pc = inputs.get("min_pchembl")
     atype = (inputs.get("activity_type") or "").upper()
     source = (inputs.get("source") or "all").lower()
+    top_n = int(inputs.get("top_n", 15 if raw_records else 10))
 
+    if raw_records:
+        records = list(report.bioactivities)
+        max_pc = inputs.get("max_pchembl")
+        if min_pc:
+            records = [r for r in records if r.pchembl_value and r.pchembl_value >= min_pc]
+        if max_pc:
+            records = [r for r in records if r.pchembl_value and r.pchembl_value <= max_pc]
+        if atype:
+            records = [r for r in records if (r.activity_type or "").upper() == atype]
+        if source != "all":
+            records = [r for r in records if r.source.lower() == source]
+        pchembl_vals = [r.pchembl_value for r in records if r.pchembl_value]
+        stats = {
+            "count": len(records),
+            "mean_pchembl": round(sum(pchembl_vals) / len(pchembl_vals), 2) if pchembl_vals else None,
+            "max_pchembl": round(max(pchembl_vals), 2) if pchembl_vals else None,
+            "min_pchembl": round(min(pchembl_vals), 2) if pchembl_vals else None,
+        }
+        records_sorted = sorted(records, key=lambda r: r.pchembl_value or 0, reverse=True)
+        top_records = [
+            {"smiles": r.smiles, "activity_type": r.activity_type, "value_nM": r.value,
+             "pchembl": r.pchembl_value, "source": r.source}
+            for r in records_sorted[:top_n]
+        ]
+        return {
+            "target": inputs["query"],
+            "statistics": stats,
+            "top_records": top_records,
+            "_action_links": [{"label": "View full report", "href": f"/recon/run?q={inputs['query']}", "external": False}],
+        }
+
+    ligands = list(report.ligand_summary)
+    top_n = min(top_n, 50)
     if min_pc:
         ligands = [l for l in ligands if l.best_pchembl and l.best_pchembl >= min_pc]
     if atype:
         ligands = [l for l in ligands if l.best_activity_type.upper() == atype]
     if source != "all":
         ligands = [l for l in ligands if source in [s.lower() for s in l.sources]]
-
     ligands = ligands[:top_n]
 
     rows = []
@@ -463,7 +383,7 @@ async def _tool_get_top_ligands(inputs: dict, report_cache: dict) -> dict:
         "target": inputs["query"],
         "total_matching": len(ligands),
         "ligands": rows,
-        "_action_links": action_links[:6],  # cap link count
+        "_action_links": action_links[:6],
     }
 
 
@@ -510,97 +430,6 @@ async def _tool_get_pdb_structures(inputs: dict, report_cache: dict) -> dict:
     }
 
 
-async def _tool_compare_targets(inputs: dict, report_cache: dict) -> dict:
-    from targetrecon.core import recon_async
-
-    queries = inputs["queries"][:4]
-    min_pc = inputs.get("min_pchembl")
-
-    async def _fetch_one(q):
-        key = q.upper()
-        if key in report_cache:
-            return report_cache[key]
-        r = await recon_async(q, min_pchembl=min_pc if min_pc else None, verbose=False)
-        report_cache[key] = r
-        return r
-
-    reports = await asyncio.gather(*[_fetch_one(q) for q in queries])
-
-    rows = []
-    action_links = []
-    for q, r in zip(queries, reports):
-        if not r.uniprot:
-            rows.append({"target": q, "error": "Not found"})
-            continue
-        u = r.uniprot
-        best = r.best_ligand
-        rows.append({
-            "target": q,
-            "gene": u.gene_name,
-            "uniprot": u.uniprot_id,
-            "organism": u.organism,
-            "pdb_structures": r.num_pdb_structures,
-            "alphafold": bool(r.alphafold),
-            "bioactivities": r.num_bioactivities,
-            "unique_ligands": r.num_unique_ligands,
-            "best_pchembl": best.best_pchembl if best else None,
-            "best_ligand_name": (best.name or best.chembl_id) if best else None,
-            "diseases": len(u.disease_associations),
-            "chembl_target": u.chembl_id,
-        })
-        action_links.append({
-            "label": f"View {u.gene_name or q}",
-            "href": f"/recon/run?q={q}",
-            "external": False,
-        })
-
-    return {"comparison": rows, "_action_links": action_links}
-
-
-async def _tool_get_protein_info(inputs: dict, report_cache: dict) -> dict:
-    from targetrecon.resolver import resolve_ids
-    from targetrecon.clients.uniprot import fetch_uniprot
-
-    query = inputs["query"].strip()
-    key = query.upper()
-
-    # Use cached if available
-    if key in report_cache and report_cache[key].uniprot:
-        u = report_cache[key].uniprot
-    else:
-        uniprot_id, _ = await resolve_ids(query)
-        if not uniprot_id:
-            return {"error": f"Could not resolve '{query}' to a UniProt entry."}
-        u = await fetch_uniprot(uniprot_id)
-        if not u:
-            return {"error": f"UniProt entry not found for '{query}'."}
-
-    go_by_cat: dict[str, list] = {}
-    for g in u.go_terms:
-        go_by_cat.setdefault(g.category, []).append(g.term)
-
-    action_links = []
-    if u.uniprot_id:
-        action_links.append({"label": f"UniProt {u.uniprot_id}", "href": f"https://www.uniprot.org/uniprot/{u.uniprot_id}", "external": True})
-    if u.chembl_id:
-        action_links.append({"label": f"ChEMBL {u.chembl_id}", "href": f"https://www.ebi.ac.uk/chembl/target_report_card/{u.chembl_id}", "external": True})
-
-    return {
-        "uniprot_id": u.uniprot_id,
-        "gene_name": u.gene_name,
-        "protein_name": u.protein_name,
-        "organism": u.organism,
-        "sequence_length": u.sequence_length,
-        "chembl_id": u.chembl_id,
-        "function": u.function_description,
-        "subcellular_locations": u.subcellular_locations,
-        "diseases": u.disease_associations,
-        "keywords": u.keywords[:15],
-        "go_biological_process": go_by_cat.get("biological_process", [])[:8],
-        "go_molecular_function": go_by_cat.get("molecular_function", [])[:8],
-        "go_cellular_component": go_by_cat.get("cellular_component", [])[:5],
-        "_action_links": action_links,
-    }
 
 
 async def _tool_get_protein_interactions(inputs: dict, report_cache: dict) -> dict:
@@ -741,226 +570,6 @@ async def _tool_search_compound(inputs: dict, report_cache: dict) -> dict:
     return {"compounds": result_compounds, "_action_links": action_links[:6]}
 
 
-async def _tool_filter_bioactivities(inputs: dict, report_cache: dict) -> dict:
-    query = inputs["query"].strip().upper()
-    report = report_cache.get(query)
-    if not report:
-        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
-
-    records = list(report.bioactivities)
-    min_pc = inputs.get("min_pchembl")
-    max_pc = inputs.get("max_pchembl")
-    atype = (inputs.get("activity_type") or "").upper()
-    source = (inputs.get("source") or "all").lower()
-    top_n = int(inputs.get("top_n", 15))
-
-    if min_pc:
-        records = [r for r in records if r.pchembl_value and r.pchembl_value >= min_pc]
-    if max_pc:
-        records = [r for r in records if r.pchembl_value and r.pchembl_value <= max_pc]
-    if atype:
-        records = [r for r in records if (r.activity_type or "").upper() == atype]
-    if source != "all":
-        records = [r for r in records if r.source.lower() == source]
-
-    pchembl_vals = [r.pchembl_value for r in records if r.pchembl_value]
-    stats = {
-        "count": len(records),
-        "mean_pchembl": round(sum(pchembl_vals) / len(pchembl_vals), 2) if pchembl_vals else None,
-        "max_pchembl": round(max(pchembl_vals), 2) if pchembl_vals else None,
-        "min_pchembl": round(min(pchembl_vals), 2) if pchembl_vals else None,
-    }
-
-    records_sorted = sorted(records, key=lambda r: r.pchembl_value or 0, reverse=True)
-    top_records = []
-    for r in records_sorted[:top_n]:
-        top_records.append({
-            "smiles": r.smiles,
-            "activity_type": r.activity_type,
-            "value_nM": r.value,
-            "pchembl": r.pchembl_value,
-            "source": r.source,
-        })
-
-    return {
-        "target": inputs["query"],
-        "statistics": stats,
-        "top_records": top_records,
-        "_action_links": [{"label": "View full report", "href": f"/recon/run?q={inputs['query']}", "external": False}],
-    }
-
-
-async def _tool_analyze_scaffolds(inputs: dict, report_cache: dict) -> dict:
-    query = inputs["query"].strip().upper()
-    report = report_cache.get(query)
-    if not report:
-        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
-
-    try:
-        from rdkit import Chem
-        from rdkit.Chem.Scaffolds import MurckoScaffold
-    except ImportError:
-        return {"error": "RDKit not available."}
-
-    top_n_ligands  = int(inputs.get("top_n_ligands", 100))
-    top_n_scaffolds = int(inputs.get("top_n_scaffolds", 10))
-    min_pc = inputs.get("min_pchembl")
-    generic = bool(inputs.get("generic", False))
-
-    ligands = [l for l in report.ligand_summary if l.smiles]
-    if min_pc:
-        ligands = [l for l in ligands if l.best_pchembl and l.best_pchembl >= min_pc]
-    ligands = ligands[:top_n_ligands]
-
-    from collections import defaultdict
-    scaffold_groups: dict = defaultdict(list)
-    skipped = 0
-    for lig in ligands:
-        mol = Chem.MolFromSmiles(lig.smiles)
-        if mol is None:
-            skipped += 1
-            continue
-        try:
-            if generic:
-                scaf = MurckoScaffold.MakeScaffoldGeneric(MurckoScaffold.GetScaffoldForMol(mol))
-            else:
-                scaf = MurckoScaffold.GetScaffoldForMol(mol)
-            scaf_smi = Chem.MolToSmiles(scaf)
-        except Exception:
-            skipped += 1
-            continue
-        scaffold_groups[scaf_smi].append(lig)
-
-    sorted_scaffolds = sorted(scaffold_groups.items(), key=lambda x: len(x[1]), reverse=True)
-
-    results = []
-    for scaf_smi, members in sorted_scaffolds[:top_n_scaffolds]:
-        best = max(members, key=lambda l: l.best_pchembl or 0)
-        pcs = [l.best_pchembl for l in members if l.best_pchembl]
-        results.append({
-            "scaffold_smiles": scaf_smi,
-            "count": len(members),
-            "best_pchembl": round(max(pcs), 2) if pcs else None,
-            "mean_pchembl": round(sum(pcs) / len(pcs), 2) if pcs else None,
-            "best_compound": best.name or best.chembl_id or "—",
-            "best_compound_pchembl": best.best_pchembl,
-            "sources": list({s for m in members for s in m.sources}),
-        })
-
-    return {
-        "target": inputs["query"],
-        "ligands_analysed": len(ligands),
-        "unique_scaffolds": len(scaffold_groups),
-        "skipped_invalid_smiles": skipped,
-        "generic_mode": generic,
-        "top_scaffolds": results,
-    }
-
-
-async def _tool_compute_properties(inputs: dict, report_cache: dict) -> dict:
-    query = inputs["query"].strip().upper()
-    report = report_cache.get(query)
-    if not report:
-        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
-
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import Descriptors, rdMolDescriptors
-    except ImportError:
-        return {"error": "RDKit not available."}
-
-    top_n = int(inputs.get("top_n", 20))
-    min_pc = inputs.get("min_pchembl")
-
-    ligands = [l for l in report.ligand_summary if l.smiles]
-    if min_pc:
-        ligands = [l for l in ligands if l.best_pchembl and l.best_pchembl >= min_pc]
-    ligands = ligands[:top_n]
-
-    rows = []
-    ro5_pass = 0
-    for lig in ligands:
-        mol = Chem.MolFromSmiles(lig.smiles)
-        if mol is None:
-            continue
-        mw   = round(Descriptors.MolWt(mol), 1)
-        logp = round(Descriptors.MolLogP(mol), 2)
-        hbd  = rdMolDescriptors.CalcNumHBD(mol)
-        hba  = rdMolDescriptors.CalcNumHBA(mol)
-        tpsa = round(Descriptors.TPSA(mol), 1)
-        rot  = rdMolDescriptors.CalcNumRotatableBonds(mol)
-        arom = rdMolDescriptors.CalcNumAromaticRings(mol)
-        violations = sum([mw > 500, logp > 5, hbd > 5, hba > 10])
-        if violations == 0:
-            ro5_pass += 1
-        rows.append({
-            "name": lig.name or lig.chembl_id or "—",
-            "pchembl": lig.best_pchembl,
-            "MW": mw, "LogP": logp, "HBD": hbd, "HBA": hba,
-            "TPSA": tpsa, "RotBonds": rot, "AromaticRings": arom,
-            "Ro5_violations": violations,
-        })
-
-    return {
-        "target": inputs["query"],
-        "compounds_analysed": len(rows),
-        "ro5_pass": ro5_pass,
-        "ro5_fail": len(rows) - ro5_pass,
-        "compounds": rows,
-    }
-
-
-async def _tool_similarity_search(inputs: dict, report_cache: dict) -> dict:
-    query = inputs["query"].strip().upper()
-    report = report_cache.get(query)
-    if not report:
-        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
-
-    try:
-        from rdkit import Chem, DataStructs
-        from rdkit.Chem import rdFingerprintGenerator
-    except ImportError:
-        return {"error": "RDKit not available."}
-
-    smiles = inputs["smiles"]
-    top_n = int(inputs.get("top_n", 10))
-    min_sim = float(inputs.get("min_similarity", 0.4))
-
-    mol_q = Chem.MolFromSmiles(smiles)
-    if mol_q is None:
-        return {"error": f"Invalid query SMILES: {smiles}"}
-
-    gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
-    fp_q = gen.GetFingerprint(mol_q)
-
-    hits = []
-    for lig in report.ligand_summary:
-        if not lig.smiles:
-            continue
-        mol = Chem.MolFromSmiles(lig.smiles)
-        if mol is None:
-            continue
-        fp = gen.GetFingerprint(mol)
-        sim = DataStructs.TanimotoSimilarity(fp_q, fp)
-        if sim >= min_sim:
-            hits.append((sim, lig))
-
-    hits.sort(key=lambda x: x[0], reverse=True)
-    return {
-        "target": inputs["query"],
-        "query_smiles": smiles,
-        "hits_found": len(hits),
-        "results": [
-            {
-                "similarity": round(sim, 3),
-                "name": lig.name or lig.chembl_id or "—",
-                "smiles": lig.smiles,
-                "pchembl": lig.best_pchembl,
-                "sources": lig.sources,
-            }
-            for sim, lig in hits[:top_n]
-        ],
-    }
 
 
 _EXEC_TIMEOUT = int(os.environ.get("TARGETRECON_EXEC_TIMEOUT", "60"))
@@ -969,10 +578,8 @@ _DATA_EXTS  = {".csv", ".tsv", ".txt", ".json", ".sdf", ".mol"}
 
 
 async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
-    query = inputs["query"].strip().upper()
-    report = report_cache.get(query)
-    if not report:
-        return {"error": f"No cached data for '{inputs['query']}'. Run search_target first."}
+    query = inputs.get("query", "").strip().upper()
+    report = report_cache.get(query) if query else None
 
     script = inputs.get("script", "")
     description = inputs.get("description", "custom script")
@@ -980,11 +587,18 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
     if not script:
         return {"error": "No script provided."}
 
-    # Per-session working directory so files persist and are user-isolated
-    workdir = get_session_workdir(sid) if sid else Path(tempfile.mkdtemp(prefix="tr_tmp_"))
+    # Per-session working directory so files persist and are user-isolated.
+    # MCP sessions: prefer TARGETRECON_WORKDIR env var, then $PWD/tmp — files land where user runs Claude Code.
+    if sid == "mcp":
+        workdir = Path(os.environ.get("TARGETRECON_WORKDIR", "") or (Path(os.getcwd()) / "tmp"))
+        workdir.mkdir(parents=True, exist_ok=True)
+    elif sid:
+        workdir = get_session_workdir(sid)
+    else:
+        workdir = Path(tempfile.mkdtemp(prefix="tr_tmp_"))
     before = set(workdir.iterdir())
 
-    gene = (report.uniprot.gene_name if report.uniprot else None) or query
+    gene = (report.uniprot.gene_name if report and report.uniprot else None) or query or "compound"
 
     def _clean_smiles(smi: str) -> str:
         """Strip extended SMILES notation (|...|) — RDKit doesn't need it."""
@@ -999,7 +613,7 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
             "value_nM": l.best_activity_value_nM, "num_assays": l.num_assays,
             "sources": l.sources,
         }
-        for l in (report.ligand_summary or [])
+        for l in (report.ligand_summary if report else [])
     ]
     bio_data = [
         {
@@ -1007,7 +621,7 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
             "activity_type": b.activity_type, "value": b.value,
             "pchembl_value": b.pchembl_value,
         }
-        for b in (report.bioactivities or [])
+        for b in (report.bioactivities if report else [])
     ]
 
     prelude = (
@@ -1027,18 +641,20 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
     )
     full_script = prelude + textwrap.dedent(script)
 
+    print(f"[run_python] starting: {description!r}, query={query}, ligands={len(ligands_data)}", flush=True)
     try:
         # Write to a temp file — more reliable than -c for large injected data
         script_file = workdir / "_tr_script.py"
         script_file.write_text(full_script, encoding="utf-8")
-        proc = subprocess.run(
-            [sys.executable, str(script_file)],
-            capture_output=True, text=True, timeout=_EXEC_TIMEOUT,
-            cwd=str(workdir),
-        )
+        _cmd = [sys.executable, str(script_file)]
+        _kw = dict(capture_output=True, text=True, timeout=_EXEC_TIMEOUT, cwd=str(workdir))
+        proc = await asyncio.to_thread(subprocess.run, _cmd, **_kw)
         stdout = proc.stdout.strip()
         stderr = proc.stderr.strip()
         success = proc.returncode == 0
+        print(f"[run_python] rc={proc.returncode}, stdout={len(stdout)}b, stderr={len(stderr)}b", flush=True)
+        if not success:
+            print(f"[run_python] STDERR:\n{stderr[:1000]}", flush=True)
 
         # Detect new files created by the script
         after = set(workdir.iterdir())
@@ -1083,42 +699,14 @@ async def _tool_run_python(inputs: dict, report_cache: dict) -> dict:
         return {"error": f"Execution error: {exc}"}
 
 
-async def _tool_list_session_files(inputs: dict, report_cache: dict) -> dict:
-    sid = inputs.get("__sid__", "")
-    if not sid:
-        return {"files": [], "note": "No session workdir available."}
-    workdir = get_session_workdir(sid)
-    files = []
-    action_links = []
-    for f in sorted(workdir.iterdir(), key=lambda x: x.name):
-        if f.name.startswith("_tr_script"):
-            continue
-        size_kb = round(f.stat().st_size / 1024, 1)
-        url = f"/agent/files/{sid}/{f.name}"
-        files.append({"name": f.name, "size_kb": size_kb, "url": url})
-        ext = f.suffix.lower()
-        if ext in _IMAGE_EXTS:
-            action_links.append({"label": f"View {f.name}", "href": url, "external": False, "is_image": True})
-            action_links.append({"label": f"⬇ Download {f.name}", "href": url, "external": False})
-        elif ext in _DATA_EXTS:
-            action_links.append({"label": f"⬇ Download {f.name}", "href": url, "external": False})
-    return {"files": files, "total": len(files), "_action_links": action_links}
-
 
 TOOL_REGISTRY = {
     "search_target": _tool_search_target,
     "get_top_ligands": _tool_get_top_ligands,
     "get_pdb_structures": _tool_get_pdb_structures,
-    "compare_targets": _tool_compare_targets,
-    "get_protein_info": _tool_get_protein_info,
     "get_protein_interactions": _tool_get_protein_interactions,
     "search_compound": _tool_search_compound,
-    "filter_bioactivities": _tool_filter_bioactivities,
-    "analyze_scaffolds": _tool_analyze_scaffolds,
-    "compute_properties": _tool_compute_properties,
-    "similarity_search": _tool_similarity_search,
     "run_python": _tool_run_python,
-    "list_session_files": _tool_list_session_files,
 }
 
 
@@ -1164,12 +752,20 @@ async def _exec_tool(tool_name: str, tool_inputs: dict, report_cache: dict, tool
             if not lnk.get("external") and "href" in lnk and "/agent/files/" not in lnk["href"]:
                 sep = "&" if "?" in lnk["href"] else "?"
                 lnk["href"] = f"{lnk['href']}{sep}sid={sid}"
+    # Include script source for run_python so the UI can show it; keep other inputs out of SSE
+    inputs_preview = {}
+    if tool_name == "run_python":
+        inputs_preview = {
+            "script": tool_inputs.get("script", ""),
+            "description": tool_inputs.get("description", ""),
+        }
     q.put(_sse("tool_result", {
         "tool_name": tool_name,
         "tool_id": tool_id,
         "elapsed": elapsed,
         "content": result,
         "action_links": action_links,
+        "inputs_preview": inputs_preview,
     }))
     return json.dumps(result)
 
@@ -1198,8 +794,9 @@ async def _run_anthropic(
     history.append({"role": "user", "content": message})
     new_messages: list[dict] = [{"role": "user", "content": message}]
 
-    for _ in range(6):
-        tool_use_blocks: list[dict] = []
+    for _ in range(10):
+        # Pending tool calls accumulated during streaming — executed AFTER stream closes
+        pending_tools: list[dict] = []  # [{id, name, inputs}]
         current_text = ""
         current_tool_id: str | None = None
         current_tool_name: str | None = None
@@ -1208,7 +805,7 @@ async def _run_anthropic(
 
         try:
             async with client.messages.stream(
-                model=model, max_tokens=4096, system=system,
+                model=model, max_tokens=8192, system=system,
                 messages=history, tools=TOOL_DEFS,
             ) as stream:
                 async for event in stream:
@@ -1238,20 +835,7 @@ async def _run_anthropic(
                                 inputs = json.loads(current_tool_json) if current_tool_json else {}
                             except Exception:
                                 inputs = {}
-                            result_str = await _exec_tool(current_tool_name, inputs, report_cache, current_tool_id, q, sid)
-                            tool_use_blocks.append({
-                                "type": "tool_use", "id": current_tool_id,
-                                "name": current_tool_name, "input": inputs,
-                            })
-                            history.append({"role": "assistant", "content": tool_use_blocks[:]})
-                            history.append({"role": "user", "content": [{
-                                "type": "tool_result", "tool_use_id": current_tool_id, "content": result_str,
-                            }]})
-                            new_messages.extend([
-                                {"role": "assistant", "content": tool_use_blocks[:]},
-                                {"role": "user", "content": [{"type": "tool_result", "tool_use_id": current_tool_id, "content": result_str}]},
-                            ])
-                            tool_use_blocks = []
+                            pending_tools.append({"id": current_tool_id, "name": current_tool_name, "inputs": inputs})
                             current_tool_name = None
                             current_tool_id = None
                     elif etype == "message_delta":
@@ -1260,6 +844,44 @@ async def _run_anthropic(
             q.put(_sse("error", {"message": str(exc)}))
             q.put(None)
             return
+
+        # Rescue incomplete tool block — stream ended before content_block_stop fired
+        if current_tool_name and current_tool_id:
+            print(f"[agent] rescuing incomplete tool block: {current_tool_name}", flush=True)
+            try:
+                inputs = json.loads(current_tool_json) if current_tool_json else {}
+            except Exception:
+                inputs = {}
+            pending_tools.append({"id": current_tool_id, "name": current_tool_name, "inputs": inputs})
+            stop_reason = "tool_use"  # force continuation
+
+        # Execute tools after stream closes — avoids blocking inside the stream context
+        if pending_tools:
+            print(f"[agent] executing {len(pending_tools)} tool(s): {[t['name'] for t in pending_tools]}", flush=True)
+            # Build assistant content: preserve any text + tool_use blocks (required by API)
+            asst_content: list[dict] = []
+            if current_text:
+                asst_content.append({"type": "text", "text": current_text})
+            asst_content += [
+                {"type": "tool_use", "id": t["id"], "name": t["name"], "input": t["inputs"]}
+                for t in pending_tools
+            ]
+            history.append({"role": "assistant", "content": asst_content})
+            new_messages.append({"role": "assistant", "content": asst_content})
+            tool_results = []
+            try:
+                for t in pending_tools:
+                    print(f"[agent] calling _exec_tool({t['name']})", flush=True)
+                    result_str = await _exec_tool(t["name"], t["inputs"], report_cache, t["id"], q, sid)
+                    print(f"[agent] _exec_tool({t['name']}) done, result len={len(result_str)}", flush=True)
+                    tool_results.append({"type": "tool_result", "tool_use_id": t["id"], "content": result_str})
+            except Exception as exc:
+                print(f"[agent] _exec_tool EXCEPTION: {exc}", flush=True)
+                q.put(_sse("error", {"message": str(exc)}))
+                q.put(None)
+                return
+            history.append({"role": "user", "content": tool_results})
+            new_messages.append({"role": "user", "content": tool_results})
 
         if stop_reason != "tool_use":
             history.append({"role": "assistant", "content": current_text or ""})

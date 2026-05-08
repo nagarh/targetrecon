@@ -261,6 +261,69 @@ Summarize the druggability of this target.
 
 ---
 
+## Claude Code MCP Integration
+
+TargetRecon ships an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server so you can use all drug-target intelligence tools directly inside **Claude Code** — no browser required.
+
+### Install
+
+```bash
+git clone https://github.com/nagarh/targetrecon.git
+cd targetrecon
+pip install -e .
+```
+
+### Register with Claude Code
+
+```bash
+claude mcp add targetrecon -- python -m targetrecon.mcp_server
+```
+
+Verify it's registered:
+
+```bash
+claude mcp list
+```
+
+> **Note:** Claude Code handles its own authentication — no `ANTHROPIC_API_KEY` needed for MCP usage. The key is only required if you run the web UI (`targetrecon serve`) and use the built-in AI agent there.
+
+### Usage
+
+Start a Claude Code session in any directory:
+
+```bash
+claude
+```
+
+Then ask naturally:
+
+```
+Search EGFR, get its top 10 inhibitors, and compute MW/LogP for each.
+```
+
+```
+Compare BRAF and MEK1 as drug targets — scaffold diversity, PDB coverage, best inhibitors.
+```
+
+```
+What targets does erlotinib hit? Show all with pChEMBL > 7.
+```
+
+Files created by `run_python` (plots, CSVs) are saved to `./tmp/` in your working directory.
+
+### Available MCP Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_target` | Full drug-target recon: UniProt, PDB, AlphaFold, ChEMBL, STRING-DB |
+| `get_top_ligands` | Top inhibitors with potency filters; raw assay records mode |
+| `get_pdb_structures` | Crystal structures with resolution/method/ligand filters |
+| `get_protein_interactions` | STRING-DB PPI network partners |
+| `search_compound` | Reverse lookup: all targets a compound has been tested against |
+| `run_python` | Execute RDKit/pandas/matplotlib scripts on cached target data |
+
+---
+
 ## Python API
 
 ```python
@@ -413,6 +476,7 @@ src/targetrecon/
 ├── resolver.py      # Gene → UniProt → ChEMBL ID resolution
 ├── report.py        # Jinja2 HTML report generator (standalone)
 ├── agent_chat.py    # AI agent — tool definitions, streaming, multi-provider
+├── mcp_server.py    # MCP server — exposes tools for Claude Code CLI
 └── clients/
     ├── uniprot.py   # UniProt REST API
     ├── pdb_client.py# RCSB PDB REST + Search API
@@ -425,7 +489,7 @@ src/targetrecon/
 
 ## Author
 
-**Hemantn Nagar**
+**Hemant Nagar**
 📧 [hn533621@ohio.edu](mailto:hn533621@ohio.edu)
 🔗 [github.com/nagarh](https://github.com/nagarh)
 

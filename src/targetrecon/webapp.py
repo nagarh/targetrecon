@@ -521,13 +521,55 @@ function addToolCard(tid,name,disp){
   d.innerHTML='<div class="tc-spinner"></div><span class="tc-txt">'+esc(disp)+'...</span>';
   msgs().appendChild(d);_cards[tid]=d;scroll();
 }
-function doneToolCard(tid,elapsed,err,links){
+function _toolSummary(name,c){
+  if(!c||c.error)return c&&c.error?c.error.slice(0,80):'';
+  if(name==='search_target'){
+    var s=[];
+    if(c.unique_ligands!=null)s.push(c.unique_ligands+' ligands');
+    if(c.pdb_structures!=null)s.push(c.pdb_structures+' structures');
+    if(c.total_bioactivities!=null)s.push(c.total_bioactivities+' activities');
+    return s.join(' · ');
+  }
+  if(name==='get_top_ligands'){
+    var s=c.total_matching!=null?c.total_matching+' ligands':'';
+    var names=(c.ligands||[]).slice(0,3).map(function(l){return l.name&&l.name!=='—'?l.name:l.chembl_id;}).filter(Boolean);
+    return s+(names.length?' — '+names.join(', '):'');
+  }
+  if(name==='get_pdb_structures'){
+    return c.total_matching!=null?c.total_matching+' structures':'';
+  }
+  if(name==='get_protein_interactions'){
+    return c.total_partners_above_threshold!=null?c.total_partners_above_threshold+' partners':'';
+  }
+  if(name==='search_compound'){
+    var n=(c.compounds||[]).length;
+    return n?n+' compound'+(n>1?'s':''):'';
+  }
+  if(name==='run_python'){
+    if(c.output){var line=c.output.split('\n')[0];return line.length>80?line.slice(0,77)+'…':line;}
+    if(c.images_saved&&c.images_saved.length)return c.images_saved.join(', ')+' saved';
+    return c.success?'done':'';
+  }
+  return '';
+}
+function doneToolCard(tid,elapsed,err,links,name,content,inputs_preview){
   var d=_cards[tid];if(!d)return;
   d.className='tool-card '+(err?'tc-error':'tc-done');
   var sp=d.querySelector('.tc-txt');
   var label=sp?sp.textContent.replace(/\.\.\.$/,''):'';
   var et=elapsed?' ('+elapsed+'s)':'';
-  d.innerHTML='<span class="tc-icon">'+(err?'&#10007;':'&#10003;')+'</span><span>'+esc(label)+et+'</span>';
+  var summary=(name&&content)?_toolSummary(name,content):'';
+  var summaryHtml=summary?'<span class="tc-summary"> — '+esc(summary)+'</span>':'';
+  d.innerHTML='<span class="tc-icon">'+(err?'&#10007;':'&#10003;')+'</span><span>'+esc(label)+et+'</span>'+summaryHtml;
+  if(name==='run_python'&&inputs_preview&&inputs_preview.script){
+    var pre=document.createElement('pre');pre.className='tc-script-src';pre.style.display='none';
+    pre.textContent=inputs_preview.script;
+    var scriptBtn=document.createElement('button');
+    scriptBtn.className='tc-script-btn';scriptBtn.title='View script';scriptBtn.textContent='{ }';
+    scriptBtn.onclick=function(){pre.style.display=pre.style.display==='none'?'block':'none';scroll();};
+    d.appendChild(scriptBtn);
+    d.appendChild(pre);
+  }
   if(links&&links.length){
     var ld=document.createElement('div');ld.className='chat-action-links';
     links.forEach(function(lk){
@@ -560,6 +602,11 @@ function stream(msg){
       _busy=false;_xhr=null;rmTyping();
       if(sb)sb.disabled=false;
       if(stb)stb.style.display='none';
+      /* finalize any tool cards still spinning when stream ended */
+      Object.keys(_cards).forEach(function(tid){
+        var d=_cards[tid];
+        if(d&&d.className.indexOf('tc-running')!==-1){doneToolCard(tid,null,true,[]);}
+      });
       _curDiv=null;scroll();saveState();
     }
   };
@@ -610,8 +657,8 @@ window.chatRunTool=function(call){
 
 function handle(ev){
   if(ev.type==='text_delta'){rmTyping();_curTxt+=ev.delta;agentDiv().innerHTML=_injectRunBtns(_md(_curTxt));scroll();}
-  else if(ev.type==='tool_start'){rmTyping();addToolCard(ev.tool_id,ev.tool_name,ev.display_message);}
-  else if(ev.type==='tool_result'){doneToolCard(ev.tool_id,ev.elapsed,!!(ev.content&&ev.content.error),ev.action_links||[]);}
+  else if(ev.type==='tool_start'){rmTyping();if(_curDiv&&_curTxt){_curDiv.innerHTML=_injectRunBtns(_md(_curTxt));}_curDiv=null;_curTxt='';addToolCard(ev.tool_id,ev.tool_name,ev.display_message);}
+  else if(ev.type==='tool_result'){doneToolCard(ev.tool_id,ev.elapsed,!!(ev.content&&ev.content.error),ev.action_links||[],ev.tool_name,ev.content,ev.inputs_preview||{});}
   else if(ev.type==='done'){rmTyping();if(_curDiv&&_curTxt)_curDiv.innerHTML=_injectRunBtns(_md(_curTxt));_curDiv=null;scroll();}
   else if(ev.type==='error'){
     rmTyping();var d=document.createElement('div');d.className='chat-bubble-agent';
@@ -3238,6 +3285,20 @@ def _ensure_ketcher() -> None:
 
     ketcher2_dir = Path(__file__).parent / "static" / "ketcher2"
     if (ketcher2_dir / "index.html").exists():
+        return
+
+    # Check write permission before attempting download
+    static_dir = Path(__file__).parent / "static"
+    if not os.access(static_dir, os.W_OK):
+        print(
+            "[targetrecon] WARNING: Cannot write to static directory — Draw Structure will be unavailable.\n"
+            f"  Path: {static_dir}\n"
+            "  This happens with system-level installs (sudo pip install).\n"
+            "  Fix: reinstall in a virtual environment, or manually download Ketcher:\n"
+            "    https://github.com/epam/ketcher/releases/download/v3.12.0/ketcher-standalone-3.12.0.zip\n"
+            f"  Extract 'standalone/' folder to: {ketcher2_dir}",
+            flush=True,
+        )
         return
 
     KETCHER_URL = "https://github.com/epam/ketcher/releases/download/v3.12.0/ketcher-standalone-3.12.0.zip"
